@@ -35,9 +35,11 @@ public class SearchController {
 
         List<Shop> matchedShops = shopRepository.searchShops(q.trim());
         List<ShopSummaryResponse> shops = matchedShops.stream()
-                .map(shop -> new ShopSummaryResponse(
-                        shop,
-                        GroUtils.distanceKmOrNull(shop.getLatitude(), shop.getLongitude(), lat, lng)))
+                .map(shop -> {
+                    Double distance = GroUtils.distanceKmOrNull(shop.getLatitude(), shop.getLongitude(), lat, lng);
+                    boolean canDeliver = distance == null || distance <= shop.getDeliveryRadiusKm();
+                    return new ShopSummaryResponse(shop, distance, canDeliver);
+                })
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(new SearchResponse(shops, products));

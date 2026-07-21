@@ -33,6 +33,7 @@ public class ShopService {
         shop.setDocumentsUrl(req.getDocumentsUrl());
         shop.setStoreSlug(generateSlug(req.getShopName(), sellerId));
         shop.setStatus(Shop.Status.PENDING);
+        shop.setDeliveryRadiusKm(req.getDeliveryRadiusKm() != null ? req.getDeliveryRadiusKm() : 5.0);
 
         return shopRepository.save(shop);
     }
@@ -56,6 +57,16 @@ public class ShopService {
         return shopRepository.save(shop);
     }
 
+    // Seller apni delivery radius alag se update kar sakta hai
+    public Shop updateDeliveryRadius(Long sellerId, Double radiusKm) {
+        if (radiusKm == null || radiusKm <= 0) {
+            throw new BadRequestExceprion("Delivery radius must be a positive number");
+        }
+        Shop shop = getMyShop(sellerId);
+        shop.setDeliveryRadiusKm(radiusKm);
+        return shopRepository.save(shop);
+    }
+
     // ---- Customer-facing (public) methods ----
 
     public List<ShopSummaryResponse> getNearbyShops(String category, String city, Double lat, Double lng) {
@@ -70,7 +81,11 @@ public class ShopService {
         }
 
         List<ShopSummaryResponse> result = shops.stream()
-                .map(shop -> new ShopSummaryResponse(shop, GroUtils.distanceKmOrNull(shop.getLatitude(), shop.getLongitude(), lat, lng)))
+                .map(shop -> {
+                    Double distance = GroUtils.distanceKmOrNull(shop.getLatitude(), shop.getLongitude(), lat, lng);
+                    boolean canDeliver = distance == null || distance <= shop.getDeliveryRadiusKm();
+                    return new ShopSummaryResponse(shop, distance, canDeliver);
+                })
                 .collect(Collectors.toList());
 
         if (lat != null && lng != null) {
@@ -90,5 +105,14 @@ public class ShopService {
             throw new ResourceNotFoundException("Shop not found");
         }
         return shop;
+    }
+
+    // Checkout ke liye — kya ye shop is customer address tak deliver kar sakti hai?
+    public boolean canDeliverTo(Shop shop, Double customerLat, Double customerLng) {
+        if (customerLat == null || customerLng == null || shop.getLatitude() == null || shop.getLongitude() == null) {
+            return true;   // coordinates missing hain to enforce nahi karenge
+        }
+        double distance = GroUtils.distanceKm(shop.getLatitude(), shop.getLongitude(), customerLat, customerLng);
+        return distance <= shop.getDeliveryRadiusKm();
     }
 }

@@ -14,6 +14,8 @@ import com.paasmart.backend.order.OrderItemRepository;
 import com.paasmart.backend.order.OrderRepository;
 import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
+import com.paasmart.backend.seller.ShopRepository;
+import com.paasmart.backend.seller.ShopService;
 import com.paasmart.backend.wallet.WalletService;
 import org.springframework.stereotype.Service;
 
@@ -32,6 +34,8 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final OrderItemRepository orderItemRepository;
     private final CouponService couponService;
     private final WalletService walletService;
+    private final ShopRepository shopRepository;
+    private final ShopService shopService;
 
     public CheckoutServiceImpl(UserRepository userRepository,
                                AddressRepository addressRepository,
@@ -40,7 +44,9 @@ public class CheckoutServiceImpl implements CheckoutService {
                                OrderRepository orderRepository,
                                OrderItemRepository orderItemRepository,
                                CouponService couponService,
-                               WalletService walletService) {
+                               WalletService walletService,
+                               ShopRepository shopRepository,
+                               ShopService shopService) {
 
         this.userRepository = userRepository;
         this.addressRepository = addressRepository;
@@ -50,6 +56,8 @@ public class CheckoutServiceImpl implements CheckoutService {
         this.orderItemRepository = orderItemRepository;
         this.couponService = couponService;
         this.walletService = walletService;
+        this.shopRepository = shopRepository;
+        this.shopService = shopService;
     }
 
     @Override
@@ -73,6 +81,15 @@ public class CheckoutServiceImpl implements CheckoutService {
 
         Product firstProduct = productRepository.findById(cartItems.get(0).getProduct().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found"));
+
+        // Delivery zone check
+        com.paasmart.backend.seller.Shop shop = shopRepository.findById(firstProduct.getShopId())
+                .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
+
+        if (!shopService.canDeliverTo(shop, address.getLatitude(), address.getLongitude())) {
+            throw new com.paasmart.backend.exception.BadRequestExceprion(
+                    "Sorry, this shop only delivers within " + shop.getDeliveryRadiusKm() + " km. Your address is outside their delivery range.");
+        }
 
         Order order = new Order();
         order.setCustomerId(customer.getId());

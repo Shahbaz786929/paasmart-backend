@@ -13,8 +13,10 @@ public class ShopSummaryResponse {
     private Double longitude;
     private String storeSlug;
     private Double distanceKm;
+    private Double deliveryRadiusKm;
+    private boolean canDeliver;
 
-    public ShopSummaryResponse(Shop shop, Double distanceKm) {
+    public ShopSummaryResponse(Shop shop, Double distanceKm, boolean canDeliver) {
         this.id = shop.getId();
         this.shopName = shop.getShopName();
         this.category = shop.getCategory() != null ? shop.getCategory().name() : null;
@@ -24,6 +26,8 @@ public class ShopSummaryResponse {
         this.longitude = shop.getLongitude();
         this.storeSlug = shop.getStoreSlug();
         this.distanceKm = distanceKm;
+        this.deliveryRadiusKm = shop.getDeliveryRadiusKm();
+        this.canDeliver = canDeliver;
     }
 
     public Long getId() { return id; }
@@ -35,4 +39,6 @@ public class ShopSummaryResponse {
     public Double getLongitude() { return longitude; }
     public String getStoreSlug() { return storeSlug; }
     public Double getDistanceKm() { return distanceKm; }
+    public Double getDeliveryRadiusKm() { return deliveryRadiusKm; }
+    public boolean isCanDeliver() { return canDeliver; }
 }

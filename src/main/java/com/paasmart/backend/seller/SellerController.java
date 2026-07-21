@@ -71,4 +71,9 @@ public class SellerController {
     public ResponseEntity<?> updateShop(@Valid @RequestBody ShopRegisterRequest req) {
         return ResponseEntity.ok(shopService.updateShop(currentUserId(), req));
     }
+
+    @PutMapping("/shop/delivery-radius")
+    public ResponseEntity<Shop> updateDeliveryRadius(@RequestParam Double radiusKm) {
+        return ResponseEntity.ok(shopService.updateDeliveryRadius(currentUserId(), radiusKm));
+    }
 }

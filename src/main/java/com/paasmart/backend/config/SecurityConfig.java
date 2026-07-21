@@ -42,6 +42,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login-otp", "/api/v1/auth/verify-otp").permitAll()
                         .requestMatchers("/api/v1/auth/**").authenticated()
+                        .requestMatchers("/api/chat/**").authenticated()
                         .requestMatchers("/api/tryon/**").authenticated()
                         .requestMatchers("/api/v1/products/**").permitAll()
                         .requestMatchers("/api/search/**").permitAll()

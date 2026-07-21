@@ -24,6 +24,8 @@ public class Shop {
     private Double longitude;
     private String documentsUrl;
 
+    private Double deliveryRadiusKm = 5.0;
+
     @Enumerated(EnumType.STRING)
     private Status status = Status.PENDING;
 
@@ -61,4 +63,8 @@ public class Shop {
     public void setStoreSlug(String storeSlug) { this.storeSlug = storeSlug; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+
+    public Double getDeliveryRadiusKm() { return deliveryRadiusKm; }
+    public void setDeliveryRadiusKm(Double deliveryRadiusKm) { this.deliveryRadiusKm = deliveryRadiusKm; }
 }

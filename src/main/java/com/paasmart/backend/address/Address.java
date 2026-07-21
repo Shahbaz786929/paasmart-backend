@@ -27,6 +27,8 @@ public class Address {
     private String state;
     private String pincode;
     private boolean defaultAddress;
+    private Double latitude;
+    private Double longitude;
 
     public Address() {
     }
@@ -118,4 +120,8 @@ public class Address {
     public void setDefaultAddress(boolean defaultAddress) {
         this.defaultAddress = defaultAddress;
     }
+    public Double getLatitude() { return latitude; }
+    public void setLatitude(Double latitude) { this.latitude = latitude; }
+    public Double getLongitude() { return longitude; }
+    public void setLongitude(Double longitude) { this.longitude = longitude; }
 }

@@ -38,6 +38,8 @@ public class AddressServiceImpl implements AddressService {
         address.setCity(request.getCity());
         address.setState(request.getState());
         address.setPincode(request.getPincode());
+        address.setLatitude(request.getLatitude());
+        address.setLongitude(request.getLongitude());
         address.setDefaultAddress(request.isDefaultAddress());
 
         return addressRepository.save(address);
@@ -71,6 +73,8 @@ public class AddressServiceImpl implements AddressService {
         address.setCity(request.getCity());
         address.setState(request.getState());
         address.setPincode(request.getPincode());
+        address.setLatitude(request.getLatitude());
+        address.setLongitude(request.getLongitude());
         address.setDefaultAddress(request.isDefaultAddress());
 
         return addressRepository.save(address);

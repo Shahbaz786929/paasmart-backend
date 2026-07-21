@@ -17,6 +17,7 @@ public class ShopRegisterRequest {
     private Double latitude;
     private Double longitude;
     private String documentsUrl;
+    private Double deliveryRadiusKm;
 
     public String getShopName() { return shopName; }
     public void setShopName(String shopName) { this.shopName = shopName; }
@@ -32,4 +33,7 @@ public class ShopRegisterRequest {
     public void setLongitude(Double longitude) { this.longitude = longitude; }
     public String getDocumentsUrl() { return documentsUrl; }
     public void setDocumentsUrl(String documentsUrl) { this.documentsUrl = documentsUrl; }
+
+    public Double getDeliveryRadiusKm() { return deliveryRadiusKm; }
+    public void setDeliveryRadiusKm(Double deliveryRadiusKm) { this.deliveryRadiusKm = deliveryRadiusKm; }
 }

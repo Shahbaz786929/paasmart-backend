@@ -1,7 +1,7 @@
 package com.paasmart.backend.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
-import org.apache.coyote.BadRequestException;
+import com.paasmart.backend.exception.BadRequestExceprion;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -25,7 +25,7 @@ public class GlobalExceptionHandler {
 
     // Wrong data
     @ExceptionHandler(BadRequestExceprion.class)
-    public ResponseEntity<ErrorResponse> handleBadRequest(BadRequestException ex, HttpServletRequest request) {
+    public ResponseEntity<ErrorResponse> handleBadRequest(BadRequestExceprion ex, HttpServletRequest request) {
         ErrorResponse error = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), request.getRequestURI());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
