@@ -70,4 +70,11 @@ public class AdminController {
     public ResponseEntity<DashboardStats> dashboard() {
         return ResponseEntity.ok(adminService.getDashboardStats());
     }
+
+    @PutMapping("/shops/{id}/delivery-radius")
+    public ResponseEntity<Shop> updateShopDeliveryRadius(
+            @PathVariable Long id,
+            @RequestParam Double radiusKm) {
+        return ResponseEntity.ok(adminService.updateShopDeliveryRadius(id, radiusKm));
+    }
 }

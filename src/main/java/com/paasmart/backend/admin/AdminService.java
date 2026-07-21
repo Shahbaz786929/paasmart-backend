@@ -149,4 +149,16 @@ public class AdminService {
 
         return stats;
     }
+
+    public com.paasmart.backend.seller.Shop updateShopDeliveryRadius(Long shopId, Double radiusKm) {
+        if (radiusKm == null || radiusKm <= 0) {
+            throw new BadRequestExceprion("Delivery radius must be a positive number");
+        }
+
+        com.paasmart.backend.seller.Shop shop = shopRepository.findById(shopId)
+                .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
+
+        shop.setDeliveryRadiusKm(radiusKm);
+        return shopRepository.save(shop);
+    }
 }
