@@ -1,0 +1,2 @@
+ALTER TABLE ratings ALTER COLUMN product_rating TYPE INTEGER;
+ALTER TABLE ratings ALTER COLUMN delivery_rating TYPE INTEGER;

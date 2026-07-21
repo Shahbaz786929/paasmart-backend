@@ -1,0 +1,13 @@
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(150) UNIQUE,
+    phone VARCHAR(15) UNIQUE NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('CUSTOMER','SELLER','DELIVERY','ADMIN','SUPPORT_AGENT')),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','INACTIVE','BANNED')),
+    preferred_language VARCHAR(20) DEFAULT 'hi',
+    profile_image VARCHAR(255),
+    otp_code VARCHAR(6),
+    otp_expires_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
