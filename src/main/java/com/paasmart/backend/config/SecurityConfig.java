@@ -44,6 +44,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").authenticated()
                         .requestMatchers("/api/chat/**").authenticated()
                         .requestMatchers("/api/tryon/**").authenticated()
+                        .requestMatchers("/api/orders/**").authenticated()
+                        .requestMatchers("/api/returns/**").authenticated()
                         .requestMatchers("/api/v1/products/**").permitAll()
                         .requestMatchers("/api/search/**").permitAll()
                         .requestMatchers("/api/reviews/**").authenticated()
