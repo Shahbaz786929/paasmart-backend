@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/orders")
 public class OrderController {
@@ -40,5 +42,10 @@ public class OrderController {
     public ResponseEntity<?> cancelOrder(@PathVariable Long id) {
         orderService.cancelOrder(id, currentUserId());
         return ResponseEntity.ok("Order has been canceled.");
+    }
+
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<List<OrderStatusHistory>> getTimeline(@PathVariable Long id) {
+        return ResponseEntity.ok(orderService.getOrderTimeline(id, currentUserId()));
     }
 }

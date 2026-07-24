@@ -31,6 +31,7 @@ public class OrderService {
     @Autowired private UserRepository userRepository;
     @Autowired private PushNotificationService pushNotificationService;
     @Autowired private WalletService walletService;
+    @Autowired private OrderStatusHistoryRepository orderStatusHistoryRepository;
 
     // forward-only status flow
     private static final List<Order.Status> FLOW = List.of(
@@ -76,6 +77,7 @@ public class OrderService {
         order.setOtp(String.format("%04d", new java.util.Random().nextInt(9999)));
 
         order = orderRepository.save(order);
+        logStatusHistory(order.getId(), Order.Status.PLACED, customerId, "Order placed by customer");
 
         for (OrderItemRequest item : req.getItems()) {
             Product product = productRepository.findById(item.getProductId()).get();
@@ -148,6 +150,7 @@ public class OrderService {
         }
         order.setStatus(Order.Status.CANCELLED);
         orderRepository.save(order);
+        logStatusHistory(orderId, Order.Status.CANCELLED, customerId, "Cancelled by customer");
     }
 
     // ---- Seller-side ----
@@ -178,7 +181,9 @@ public class OrderService {
 
         if (newStatus == Order.Status.CANCELLED) {
             order.setStatus(Order.Status.CANCELLED);
-            return orderRepository.save(order);
+            order = orderRepository.save(order);
+            logStatusHistory(orderId, Order.Status.CANCELLED, sellerId, "Cancelled by seller");
+            return order;
         }
 
         int currentIndex = FLOW.indexOf(order.getStatus());
@@ -193,6 +198,7 @@ public class OrderService {
             order.setDeliveredAt(java.time.LocalDateTime.now());
         }
         order = orderRepository.save(order);
+        logStatusHistory(orderId, newStatus, sellerId, "Updated by seller");
         notifyCustomer(order, "Order Update", "Your order #" + order.getId() + " is now " + newStatus.name());
 
         if (newStatus == Order.Status.DELIVERED) {
@@ -277,6 +283,7 @@ public class OrderService {
         }
         order.setStatus(Order.Status.PICKED_UP);
         order = orderRepository.save(order);
+        logStatusHistory(orderId, Order.Status.PICKED_UP, deliveryBoyId, "Picked up by delivery partner");
         notifyCustomer(order, "Order Picked Up", "Your order #" + order.getId() + " has been picked up and is on its way!");
         return order;
     }
@@ -289,6 +296,7 @@ public class OrderService {
         }
         order.setStatus(Order.Status.IN_TRANSIT);
         order = orderRepository.save(order);
+        logStatusHistory(orderId, Order.Status.IN_TRANSIT, deliveryBoyId, "Out for delivery");
         notifyCustomer(order, "Out for Delivery", "Your order #" + order.getId() + " is out for delivery!");
         return order;
     }
@@ -319,7 +327,27 @@ public class OrderService {
         order.setStatus(Order.Status.DELIVERED);
         order.setDeliveredAt(java.time.LocalDateTime.now());
         order = orderRepository.save(order);
+        logStatusHistory(orderId, Order.Status.DELIVERED, deliveryBoyId, "Delivered successfully");
         notifyCustomer(order, "Order Delivered", "Your order #" + order.getId() + " has been delivered. Enjoy!");
         return order;
+    }
+
+    private void logStatusHistory(Long orderId, Order.Status status, Long changedById, String note) {
+        try {
+            OrderStatusHistory history = new OrderStatusHistory();
+            history.setOrderId(orderId);
+            history.setStatus(status);
+            history.setChangedById(changedById);
+            history.setNote(note);
+            orderStatusHistoryRepository.save(history);
+        } catch (Exception e) {
+            System.out.println("Failed to log order status history: " + e.getMessage());
+        }
+    }
+
+    // Timeline fetch karne ke liye — customer/seller dono use kar sakte hain
+    public List<OrderStatusHistory> getOrderTimeline(Long orderId, Long requesterId) {
+        getOrderById(orderId, requesterId);   // ye method already ownership verify karta hai
+        return orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(orderId);
     }
 }
