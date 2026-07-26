@@ -49,6 +49,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/products/**").permitAll()
                         .requestMatchers("/api/search/**").permitAll()
                         .requestMatchers("/api/reviews/**").authenticated()
+                        .requestMatchers("/api/deals/**").permitAll()
+                        .requestMatchers("/api/v1/seller/flash-sales/**").hasRole("SELLER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/shops/**").permitAll()
                         .requestMatchers("/api/v1/orders/**").authenticated()
                         .requestMatchers("/api/cart/**", "/api/address/**", "/api/wishlist/**", "/api/checkout/**", "/api/wallet/**", "/api/coupons/apply").authenticated()

@@ -8,6 +8,7 @@ import com.paasmart.backend.cart.Cart;
 import com.paasmart.backend.cart.CartRepository;
 import com.paasmart.backend.coupon.CouponService;
 import com.paasmart.backend.exception.ResourceNotFoundException;
+import com.paasmart.backend.flashsale.FlashSaleService;
 import com.paasmart.backend.order.*;
 import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
@@ -34,6 +35,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final ShopRepository shopRepository;
     private final ShopService shopService;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
+    private final FlashSaleService flashSaleService;
 
     public CheckoutServiceImpl(UserRepository userRepository,
                                AddressRepository addressRepository,
@@ -45,7 +47,8 @@ public class CheckoutServiceImpl implements CheckoutService {
                                WalletService walletService,
                                ShopRepository shopRepository,
                                ShopService shopService,
-                               OrderStatusHistoryRepository orderStatusHistoryRepository) {
+                               OrderStatusHistoryRepository orderStatusHistoryRepository,
+                               FlashSaleService flashSaleService) {
 
         this.userRepository = userRepository;
         this.addressRepository = addressRepository;
@@ -58,6 +61,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         this.shopRepository = shopRepository;
         this.shopService = shopService;
         this.orderStatusHistoryRepository = orderStatusHistoryRepository;
+        this.flashSaleService = flashSaleService;
     }
 
     @Override
@@ -117,6 +121,7 @@ public class CheckoutServiceImpl implements CheckoutService {
             if (product.getStockQty() < cart.getQuantity()) {
                 throw new RuntimeException(product.getName() + " Out Of Stock");
             }
+            BigDecimal effectivePrice = flashSaleService.getEffectivePrice(product);
             BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity()));
             grandTotal = grandTotal.add(subtotal);
         }
