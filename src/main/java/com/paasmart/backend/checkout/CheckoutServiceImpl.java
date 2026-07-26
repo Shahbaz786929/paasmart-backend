@@ -8,10 +8,7 @@ import com.paasmart.backend.cart.Cart;
 import com.paasmart.backend.cart.CartRepository;
 import com.paasmart.backend.coupon.CouponService;
 import com.paasmart.backend.exception.ResourceNotFoundException;
-import com.paasmart.backend.order.Order;
-import com.paasmart.backend.order.OrderItem;
-import com.paasmart.backend.order.OrderItemRepository;
-import com.paasmart.backend.order.OrderRepository;
+import com.paasmart.backend.order.*;
 import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
 import com.paasmart.backend.seller.ShopRepository;
@@ -36,6 +33,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final WalletService walletService;
     private final ShopRepository shopRepository;
     private final ShopService shopService;
+    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
 
     public CheckoutServiceImpl(UserRepository userRepository,
                                AddressRepository addressRepository,
@@ -46,7 +44,8 @@ public class CheckoutServiceImpl implements CheckoutService {
                                CouponService couponService,
                                WalletService walletService,
                                ShopRepository shopRepository,
-                               ShopService shopService) {
+                               ShopService shopService,
+                               OrderStatusHistoryRepository orderStatusHistoryRepository) {
 
         this.userRepository = userRepository;
         this.addressRepository = addressRepository;
@@ -58,6 +57,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         this.walletService = walletService;
         this.shopRepository = shopRepository;
         this.shopService = shopService;
+        this.orderStatusHistoryRepository = orderStatusHistoryRepository;
     }
 
     @Override
@@ -125,6 +125,14 @@ public class CheckoutServiceImpl implements CheckoutService {
         order.setTotalAmount(totalBeforeDiscount);
 
         order = orderRepository.save(order);   // pehle save karo taaki orderId mile
+
+        // Order status history — hamesha log hoga, coupon use ho ya na ho
+        OrderStatusHistory placeHistory = new OrderStatusHistory();
+        placeHistory.setOrderId(order.getId());
+        placeHistory.setStatus(Order.Status.PLACED);
+        placeHistory.setChangedById(customerId);
+        placeHistory.setNote("Order placed by customer");
+        orderStatusHistoryRepository.save(placeHistory);
 
         // Agar coupon diya gaya hai to redeem karo aur totalAmount adjust karo
         if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
