@@ -7,6 +7,8 @@ import com.paasmart.backend.auth.dto.RegisterRequest;
 import com.paasmart.backend.config.JwtUtil;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
+import com.paasmart.backend.tenant.Tenant;
+import com.paasmart.backend.tenant.TenantRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,9 @@ public class AuthService {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private TenantRepository tenantRepository;
+
     public String register(RegisterRequest req) {
         if (userRepository.existsByPhone(req.getPhone())) {
             throw new BadRequestExceprion("This Phone Number Already Register");
@@ -32,6 +37,16 @@ public class AuthService {
         user.setPhone(req.getPhone());
         user.setRole(User.Role.valueOf(req.getRole().toUpperCase()));
         user.setReferralCode(generateUniqueReferralCode());
+
+        String tenantSlug = (req.getTenantSlug() == null || req.getTenantSlug().isBlank())
+                ? "default"
+                : req.getTenantSlug().trim().toLowerCase();
+        Tenant tenant = tenantRepository.findBySlug(tenantSlug)
+                .orElseThrow(() -> new BadRequestExceprion("Invalid city/tenant: " + tenantSlug));
+        if (tenant.getStatus() == Tenant.Status.SUSPENDED) {
+            throw new BadRequestExceprion("This city's service is currently unavailable");
+        }
+        user.setTenant(tenant);
 
         // Apply referralCode
         if (req.getReferralCode() != null && !req.getReferralCode().isBlank()) {
@@ -84,7 +99,7 @@ public class AuthService {
         user.setOtpExpiresAt(null);
         userRepository.save(user);
 
-        String token = jwtUtil.generateToken(user.getId(), user.getRole().name());
+        String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
         return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
     }
 

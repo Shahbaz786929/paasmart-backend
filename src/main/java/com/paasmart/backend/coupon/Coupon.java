@@ -14,6 +14,7 @@ public class Coupon {
     private Long id;
 
     private String code;
+    private Long tenantId;
     private String description;
 
     @Enumerated(EnumType.STRING)
@@ -55,4 +56,6 @@ public class Coupon {
     public void setActive(boolean active) { this.active = active; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

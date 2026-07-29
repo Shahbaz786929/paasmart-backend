@@ -6,6 +6,7 @@ import com.paasmart.backend.exception.UnauthorizedException;
 import com.paasmart.backend.product.dto.ProductRequest;
 import com.paasmart.backend.seller.Shop;
 import com.paasmart.backend.seller.ShopRepository;
+import com.paasmart.backend.tenant.TenantContext;
 import com.paasmart.backend.wishlist.WishlistNotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class ProductService {
 
         Product product = new Product();
         product.setShopId(shop.getId());
+        product.setTenantId(shop.getTenant().getId());
         product.setName(req.getName());
         product.setCategory(req.getCategory());
         product.setSubCategory(req.getSubCategory());
@@ -97,14 +99,15 @@ public class ProductService {
     // ---- Customer-facing (public) methods ----
 
     public List<Product> getAllAvailableProducts(String category) {
+        Long tenantId = TenantContext.getTenantId();
         if (category != null && !category.isBlank()) {
-            return productRepository.findByCategoryIgnoreCaseAndIsAvailableTrue(category);
+            return productRepository.findByCategoryIgnoreCaseAndIsAvailableTrueAndTenantId(category, tenantId);
         }
-        return productRepository.findByIsAvailableTrue();
+        return productRepository.findByIsAvailableTrueAndTenantId(tenantId);
     }
 
     public Product getProductById(Long id) {
-        return productRepository.findById(id)
+        return productRepository.findByIdAndTenantId(id, TenantContext.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
     }
 }

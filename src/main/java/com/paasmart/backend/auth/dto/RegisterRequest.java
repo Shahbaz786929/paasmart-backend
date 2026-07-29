@@ -12,6 +12,8 @@ public class RegisterRequest {
     @Pattern(regexp = "\\d{10}", message = "Phone number must be 10 digit")
     private String phone;
 
+    private String tenantSlug;
+
     private String referralCode;
 
     @NotBlank(message = "Role is required")
@@ -26,4 +28,6 @@ public class RegisterRequest {
 
     public String getReferralCode() { return referralCode; }
     public void setReferralCode(String referralCode) { this.referralCode = referralCode; }
+    public String getTenantSlug() { return tenantSlug; }
+    public void setTenantSlug(String tenantSlug) { this.tenantSlug = tenantSlug; }
 }

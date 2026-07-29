@@ -4,6 +4,9 @@ import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.seller.dto.ShopRegisterRequest;
 import com.paasmart.backend.seller.dto.ShopSummaryResponse;
+import com.paasmart.backend.tenant.Tenant;
+import com.paasmart.backend.tenant.TenantContext;
+import com.paasmart.backend.tenant.TenantRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -16,13 +19,20 @@ public class ShopService {
 
     @Autowired
     private ShopRepository shopRepository;
+    @Autowired
+    private TenantRepository tenantRepository;
 
     public Shop registerShop(Long sellerId, ShopRegisterRequest req) {
         if (shopRepository.existsBySellerId(sellerId)) {
             throw new BadRequestExceprion("This shop is already registered");
         }
 
+        Long tenantId = TenantContext.getTenantId();
+        Tenant tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new BadRequestExceprion("Invalid tenant context"));
+
         Shop shop = new Shop();
+        shop.setTenant(tenant);
         shop.setSellerId(sellerId);
         shop.setShopName(req.getShopName());
         shop.setCategory(Shop.Category.valueOf(req.getCategory().toUpperCase()));
@@ -70,14 +80,15 @@ public class ShopService {
     // ---- Customer-facing (public) methods ----
 
     public List<ShopSummaryResponse> getNearbyShops(String category, String city, Double lat, Double lng) {
+        Long tenantId = TenantContext.getTenantId();
         List<Shop> shops;
 
         if (category != null && !category.isBlank()) {
-            shops = shopRepository.findByStatusAndCategory(Shop.Status.APPROVED, Shop.Category.valueOf(category.toUpperCase()));
+            shops = shopRepository.findByStatusAndCategoryAndTenantId(Shop.Status.APPROVED, Shop.Category.valueOf(category.toUpperCase()), tenantId);
         } else if (city != null && !city.isBlank()) {
-            shops = shopRepository.findByStatusAndCityIgnoreCase(Shop.Status.APPROVED, city);
+            shops = shopRepository.findByStatusAndCityIgnoreCaseAndTenantId(Shop.Status.APPROVED, city, tenantId);
         } else {
-            shops = shopRepository.findByStatus(Shop.Status.APPROVED);
+            shops = shopRepository.findByStatusAndTenantId(Shop.Status.APPROVED, tenantId);
         }
 
         List<ShopSummaryResponse> result = shops.stream()
@@ -99,7 +110,7 @@ public class ShopService {
     }
 
     public Shop getApprovedShopById(Long id) {
-        Shop shop = shopRepository.findById(id)
+        Shop shop = shopRepository.findByIdAndTenantId(id, TenantContext.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
         if (shop.getStatus() != Shop.Status.APPROVED) {
             throw new ResourceNotFoundException("Shop not found");

@@ -7,4 +7,9 @@ import java.util.Optional;
 public interface CouponRepository extends JpaRepository<Coupon, Long> {
     Optional<Coupon> findByCodeIgnoreCaseAndActiveTrue(String code);
     List<Coupon> findByActiveTrue();
+
+    // --- Tenant-scoped versions ---
+    Optional<Coupon> findByCodeIgnoreCaseAndActiveTrueAndTenantId(String code, Long tenantId);
+    List<Coupon> findByActiveTrueAndTenantId(Long tenantId);
+    List<Coupon> findByTenantId(Long tenantId);
 }

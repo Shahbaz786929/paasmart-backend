@@ -4,6 +4,8 @@ import com.paasmart.backend.coupon.dto.CouponApplyResponse;
 import com.paasmart.backend.coupon.dto.CouponRequest;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
+import com.paasmart.backend.exception.UnauthorizedException;
+import com.paasmart.backend.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,11 +23,18 @@ public class CouponService {
     // ---- Admin: create/manage coupons ----
 
     public Coupon createCoupon(CouponRequest req) {
-        if (couponRepository.findByCodeIgnoreCaseAndActiveTrue(req.getCode()).isPresent()) {
+        Long tenantId = TenantContext.getTenantId();
+        if (tenantId == null) {
+            // ADMIN (platform owner) ka TenantContext khaali hota hai jaan-bujh ke.
+            // Coupons ab TENANT_ADMIN (city partner) banata hai, isliye ye account use karo.
+            throw new BadRequestExceprion("Coupons must be created from a city-partner (TENANT_ADMIN) account");
+        }
+        if (couponRepository.findByCodeIgnoreCaseAndActiveTrueAndTenantId(req.getCode(), tenantId).isPresent()) {
             throw new BadRequestExceprion("A coupon with this code already exists");
         }
 
         Coupon coupon = new Coupon();
+        coupon.setTenantId(tenantId);
         coupon.setCode(req.getCode().toUpperCase());
         coupon.setDescription(req.getDescription());
         coupon.setDiscountType(Coupon.DiscountType.valueOf(req.getDiscountType().toUpperCase()));
@@ -40,16 +49,23 @@ public class CouponService {
     }
 
     public List<Coupon> getAllCoupons() {
-        return couponRepository.findAll();
+        Long tenantId = TenantContext.getTenantId();
+        return tenantId == null ? couponRepository.findAll() : couponRepository.findByTenantId(tenantId);
     }
 
     public List<Coupon> getActiveCoupons() {
-        return couponRepository.findByActiveTrue();
+        return couponRepository.findByActiveTrueAndTenantId(TenantContext.getTenantId());
     }
 
     public Coupon deactivateCoupon(Long couponId) {
         Coupon coupon = couponRepository.findById(couponId)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found"));
+
+        Long tenantId = TenantContext.getTenantId();
+        if (tenantId != null && !coupon.getTenantId().equals(tenantId)) {
+            throw new UnauthorizedException("This coupon belongs to a different city partner");
+        }
+
         coupon.setActive(false);
         return couponRepository.save(coupon);
     }
@@ -79,7 +95,7 @@ public class CouponService {
     }
 
     private Coupon getValidCoupon(Long customerId, String code, BigDecimal orderAmount) {
-        Coupon coupon = couponRepository.findByCodeIgnoreCaseAndActiveTrue(code)
+        Coupon coupon = couponRepository.findByCodeIgnoreCaseAndActiveTrueAndTenantId(code, TenantContext.getTenantId())
                 .orElseThrow(() -> new BadRequestExceprion("Invalid or inactive coupon code"));
 
         LocalDateTime now = LocalDateTime.now();

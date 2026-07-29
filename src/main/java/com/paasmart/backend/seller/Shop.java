@@ -1,5 +1,6 @@
 package com.paasmart.backend.seller;
 
+import com.paasmart.backend.tenant.Tenant;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -28,6 +29,10 @@ public class Shop {
 
     @Enumerated(EnumType.STRING)
     private Status status = Status.PENDING;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id", nullable = false)
+    private Tenant tenant;
 
     private String rejectionReason;
     private String storeSlug;
@@ -67,4 +72,6 @@ public class Shop {
 
     public Double getDeliveryRadiusKm() { return deliveryRadiusKm; }
     public void setDeliveryRadiusKm(Double deliveryRadiusKm) { this.deliveryRadiusKm = deliveryRadiusKm; }
+    public Tenant getTenant() { return tenant; }
+    public void setTenant(Tenant tenant) { this.tenant = tenant; }
 }

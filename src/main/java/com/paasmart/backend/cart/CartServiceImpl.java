@@ -6,6 +6,7 @@ import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
 import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
+import com.paasmart.backend.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -37,7 +38,7 @@ public class CartServiceImpl implements CartService {
         User customer = userRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer Not Found"));
 
-        Product product = productRepository.findById(request.getProductId())
+        Product product = productRepository.findByIdAndTenantId(request.getProductId(), TenantContext.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found"));
 
         Cart cart = cartRepository.findByCustomer(customer).stream()

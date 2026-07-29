@@ -27,6 +27,7 @@ public class Product {
     private Boolean tryOnEnabled = false;
     private String voiceDescriptionUrl;
     private LocalDateTime createdAt = LocalDateTime.now();
+    private Long tenantId;
 
     @OneToMany(mappedBy = "product")
     private List<Wishlist> wishlists;
@@ -64,4 +65,6 @@ public class Product {
     public void setAvailable(Boolean available) {isAvailable = available; }
     public List<Wishlist> getWishlists() { return wishlists; }
     public void setWishlists(List<Wishlist> wishlists) { this.wishlists = wishlists; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

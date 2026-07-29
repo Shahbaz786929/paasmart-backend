@@ -34,4 +34,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     long countByShopIdAndCreatedAtAfter(Long shopId, LocalDateTime dateTime);
     long countByShopId(Long shopId);
     long countByShopIdAndStatus(Long shopId, Order.Status status);
+
+    // --- Tenant-scoped (future: TENANT_ADMIN apne city ka order-dashboard banayega isse) ---
+    List<Order> findByTenantIdOrderByCreatedAtDesc(Long tenantId);
+    long countByTenantIdAndCreatedAtAfter(Long tenantId, LocalDateTime dateTime);
+
+    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status = 'COMPLETED' AND o.tenantId = :tenantId")
+    java.math.BigDecimal getTenantTotalRevenue(@Param("tenantId") Long tenantId);
 }

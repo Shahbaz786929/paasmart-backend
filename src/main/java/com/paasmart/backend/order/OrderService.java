@@ -12,6 +12,7 @@ import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
 import com.paasmart.backend.seller.Shop;
 import com.paasmart.backend.seller.ShopRepository;
+import com.paasmart.backend.tenant.TenantContext;
 import com.paasmart.backend.wallet.WalletService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -47,7 +48,7 @@ public class OrderService {
 
         // Pehle validate karo: sab products ek hi shop se hone chahiye, stock available ho
         for (OrderItemRequest item : req.getItems()) {
-            Product product = productRepository.findById(item.getProductId())
+            Product product = productRepository.findByIdAndTenantId(item.getProductId(), TenantContext.getTenantId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product ID " + item.getProductId() + " Not Found"));
 
             if (shopId == null) {
@@ -67,6 +68,7 @@ public class OrderService {
         Order order = new Order();
         order.setCustomerId(customerId);
         order.setShopId(shopId);
+        order.setTenantId(TenantContext.getTenantId());
         order.setDeliveryAddress(req.getDeliveryAddress());
         order.setDeliveryLat(req.getDeliveryLat());
         order.setDeliveryLng(req.getDeliveryLng());
@@ -80,7 +82,7 @@ public class OrderService {
         logStatusHistory(order.getId(), Order.Status.PLACED, customerId, "Order placed by customer");
 
         for (OrderItemRequest item : req.getItems()) {
-            Product product = productRepository.findById(item.getProductId()).get();
+            Product product = productRepository.findByIdAndTenantId(item.getProductId(), TenantContext.getTenantId()).get();
 
             BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
             total = total.add(subtotal);

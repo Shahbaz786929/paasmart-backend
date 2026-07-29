@@ -17,13 +17,15 @@ public class Order {
     private Long shopId;
     private Long deliveryBoyId;
 
+    private Long tenantId;
+
     @Enumerated(EnumType.STRING)
     private Status status = Status.PLACED;
 
     @Enumerated(EnumType.STRING)
     private PaymentMode paymentMode = PaymentMode.COD;
 
-    private BigDecimal totalAmount;
+    private BigDecimal totalAmount = BigDecimal.ZERO;
     private BigDecimal deliveryFee = BigDecimal.ZERO;
     private String deliveryAddress;
     private Double deliveryLat;
@@ -70,4 +72,6 @@ public class Order {
     public void setDeliveredAt(LocalDateTime deliveredAt) { this.deliveredAt = deliveredAt; }
     public Address getAddress() { return address; }
     public void setAddress(Address address) { this.address = address; }
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 }

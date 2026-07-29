@@ -1,5 +1,6 @@
 package com.paasmart.backend.config;
 
+import com.paasmart.backend.tenant.TenantContext;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -33,27 +34,36 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String header = request.getHeader("Authorization");
 
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-            try {
-                Claims claims = Jwts.parser()
-                        .verifyWith(getKey())
-                        .build()
-                        .parseSignedClaims(token)
-                        .getPayload();
+        try {
+            if (header != null && header.startsWith("Bearer ")) {
+                String token = header.substring(7);
+                try {
+                    Claims claims = Jwts.parser()
+                            .verifyWith(getKey())
+                            .build()
+                            .parseSignedClaims(token)
+                            .getPayload();
 
-                Long userId = Long.valueOf(claims.getSubject());
-                String role = claims.get("role", String.class);
+                    Long userId = Long.valueOf(claims.getSubject());
+                    String role = claims.get("role", String.class);
+                    Long tenantId = claims.get("tenantId", Long.class);
 
-                var authToken = new UsernamePasswordAuthenticationToken(
-                        userId, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                    // ADMIN (platform owner) bypasses tenant scoping -- sees everything
+                    if (!"ADMIN".equals(role)) {
+                        TenantContext.setTenantId(tenantId);
+                    }
 
-            } catch (Exception e) {
-                // Invalid/expired token
-                SecurityContextHolder.clearContext();
+                    var authToken = new UsernamePasswordAuthenticationToken(
+                            userId, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+
+                } catch (Exception e) {
+                    SecurityContextHolder.clearContext();
+                }
             }
+            chain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();   //  thread pool reuse hone se leak na ho
         }
-        chain.doFilter(request, response);
     }
 }

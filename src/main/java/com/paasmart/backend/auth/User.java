@@ -2,6 +2,7 @@ package com.paasmart.backend.auth;
 
 import com.paasmart.backend.address.Address;
 import com.paasmart.backend.cart.Cart;
+import com.paasmart.backend.tenant.Tenant;
 import com.paasmart.backend.wishlist.Wishlist;
 import jakarta.persistence.*;
 
@@ -26,6 +27,10 @@ public class User {
     @Enumerated(EnumType.STRING)
     private Role role;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tenant_id", nullable = false)
+    private Tenant tenant;
+
     @Enumerated(EnumType.STRING)
     private Status status = Status.ACTIVE;
 
@@ -49,7 +54,7 @@ public class User {
     @OneToMany(mappedBy = "customer")
     private List<Wishlist> wishlists;
 
-    public enum Role { CUSTOMER, SELLER, DELIVERY, ADMIN, SUPPORT_AGENT }
+    public enum Role { CUSTOMER, SELLER, DELIVERY, ADMIN, SUPPORT_AGENT, TENANT_ADMIN }
     public enum Status { ACTIVE, INACTIVE, BANNED }
 
 
@@ -168,4 +173,6 @@ public class User {
     public void setReferredBy(Long referredBy) { this.referredBy = referredBy; }
     public java.math.BigDecimal getWalletBalance() { return walletBalance; }
     public void setWalletBalance(java.math.BigDecimal walletBalance) { this.walletBalance = walletBalance; }
+    public Tenant getTenant() { return tenant; }
+    public void setTenant(Tenant tenant) { this.tenant = tenant; }
 }

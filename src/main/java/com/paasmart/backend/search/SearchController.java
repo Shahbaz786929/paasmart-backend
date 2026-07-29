@@ -6,6 +6,7 @@ import com.paasmart.backend.seller.GroUtils;
 import com.paasmart.backend.seller.Shop;
 import com.paasmart.backend.seller.ShopRepository;
 import com.paasmart.backend.seller.dto.ShopSummaryResponse;
+import com.paasmart.backend.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,9 +32,9 @@ public class SearchController {
             return ResponseEntity.ok(new SearchResponse(List.of(), List.of()));
         }
 
-        List<Product> products = productRepository.searchProducts(q.trim());
+        List<Product> products = productRepository.searchProducts(q.trim(), TenantContext.getTenantId());
 
-        List<Shop> matchedShops = shopRepository.searchShops(q.trim());
+        List<Shop> matchedShops = shopRepository.searchShops(q.trim(), TenantContext.getTenantId());
         List<ShopSummaryResponse> shops = matchedShops.stream()
                 .map(shop -> {
                     Double distance = GroUtils.distanceKmOrNull(shop.getLatitude(), shop.getLongitude(), lat, lng);
