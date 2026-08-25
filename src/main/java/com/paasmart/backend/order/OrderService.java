@@ -5,7 +5,10 @@ import com.paasmart.backend.auth.UserRepository;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
+import com.paasmart.backend.notification.Notification;
+import com.paasmart.backend.notification.NotificationService;
 import com.paasmart.backend.notification.PushNotificationService;
+import com.paasmart.backend.order.dto.DeliveryLocationResponse;
 import com.paasmart.backend.order.dto.OrderItemRequest;
 import com.paasmart.backend.order.dto.PlaceOrderRequest;
 import com.paasmart.backend.product.Product;
@@ -13,6 +16,7 @@ import com.paasmart.backend.product.ProductRepository;
 import com.paasmart.backend.seller.Shop;
 import com.paasmart.backend.seller.ShopRepository;
 import com.paasmart.backend.tenant.TenantContext;
+// import com.paasmart.backend.telephony.TelephonyService; // Masked calling — baad me chahiye ho to uncomment karo
 import com.paasmart.backend.wallet.WalletService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,9 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     @Autowired private OrderRepository orderRepository;
     @Autowired private OrderItemRepository orderItemRepository;
@@ -33,6 +41,8 @@ public class OrderService {
     @Autowired private PushNotificationService pushNotificationService;
     @Autowired private WalletService walletService;
     @Autowired private OrderStatusHistoryRepository orderStatusHistoryRepository;
+    @Autowired private NotificationService notificationService;
+    // @Autowired private TelephonyService telephonyService; // Masked calling — baad me chahiye ho to uncomment karo
 
     // forward-only status flow
     private static final List<Order.Status> FLOW = List.of(
@@ -46,7 +56,6 @@ public class OrderService {
         Long shopId = null;
         BigDecimal total = BigDecimal.ZERO;
 
-        // Pehle validate karo: sab products ek hi shop se hone chahiye, stock available ho
         for (OrderItemRequest item : req.getItems()) {
             Product product = productRepository.findByIdAndTenantId(item.getProductId(), TenantContext.getTenantId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product ID " + item.getProductId() + " Not Found"));
@@ -75,7 +84,6 @@ public class OrderService {
         order.setPaymentMode(Order.PaymentMode.valueOf(req.getPaymentMode().toUpperCase()));
         order.setStatus(Order.Status.PLACED);
 
-        // Delivery OTP generate karo — Chapter 5.4 ke delivery flow mein use hoga
         order.setOtp(String.format("%04d", new java.util.Random().nextInt(9999)));
 
         order = orderRepository.save(order);
@@ -95,7 +103,6 @@ public class OrderService {
             orderItem.setSubtotal(subtotal);
             orderItemRepository.save(orderItem);
 
-            // Stock decrease
             product.setStockQty(product.getStockQty() - item.getQuantity());
             productRepository.save(product);
         }
@@ -105,12 +112,12 @@ public class OrderService {
         final Order finalOrder = order;
         Shop shopForNotify = shopRepository.findById(shopId).orElse(null);
         if (shopForNotify != null) {
-            userRepository.findById(shopForNotify.getSellerId()).ifPresent(seller ->
-                    pushNotificationService.send(
-                            seller.getPushToken(),
-                            "New Order!",
-                            "You have received a new order — ₹" + finalOrder.getTotalAmount()
-                    )
+            notificationService.notify(
+                    shopForNotify.getSellerId(),
+                    Notification.Type.NEW_ORDER,
+                    "New Order!",
+                    "You have received a new order — ₹" + finalOrder.getTotalAmount(),
+                    finalOrder.getId()
             );
         }
 
@@ -203,11 +210,31 @@ public class OrderService {
         logStatusHistory(orderId, newStatus, sellerId, "Updated by seller");
         notifyCustomer(order, "Order Update", "Your order #" + order.getId() + " is now " + newStatus.name());
 
+        if (newStatus == Order.Status.READY_FOR_PICKUP) {
+            notifyAvailableDeliveryBoys(order);
+        }
+
         if (newStatus == Order.Status.DELIVERED) {
             handleReferralBonus(order.getCustomerId());
         }
 
         return order;
+    }
+
+    // Order pickup ke liye ready hote hi tenant ke saare on-duty delivery boys ko notify karo
+    private void notifyAvailableDeliveryBoys(Order order) {
+        List<User> deliveryBoys = userRepository.findByRoleAndTenant_IdAndOnDuty(
+                User.Role.DELIVERY, order.getTenantId(), true);
+
+        for (User boy : deliveryBoys) {
+            notificationService.notify(
+                    boy.getId(),
+                    Notification.Type.NEW_DELIVERY,
+                    "New Order Available!",
+                    "Order #" + order.getId() + " ready for pickup — ₹" + order.getDeliveryFee() + " delivery fee",
+                    order.getId()
+            );
+        }
     }
 
     private void handleReferralBonus(Long customerId) {
@@ -216,7 +243,7 @@ public class OrderService {
                     .filter(o -> o.getStatus() == Order.Status.DELIVERED || o.getStatus() == Order.Status.COMPLETED)
                     .count();
 
-            if (deliveredOrdersCount != 1) return;   // sirf pehle hi order pe bonus milega
+            if (deliveredOrdersCount != 1) return;
 
             User customer = userRepository.findById(customerId).orElse(null);
             if (customer == null || customer.getReferredBy() == null) return;
@@ -229,7 +256,7 @@ public class OrderService {
                     com.paasmart.backend.wallet.WalletTransaction.Type.WELCOME_BONUS,
                     "Welcome bonus for your first order", null);
         } catch (Exception e) {
-            System.out.println("Referral bonus failed: " + e.getMessage());
+            log.warn("Referral bonus failed", e);
         }
     }
 
@@ -242,12 +269,31 @@ public class OrderService {
 
     // == DELIVERY BOY METHODS ==
 
-    // Nearby-ready orders jo abhi tak kisi delivery boy ko assign nahi hue
-    public List<Order> getAvailableOrdersForDelivery() {
-        return orderRepository.findByStatusAndDeliveryBoyIdIsNull(Order.Status.READY_FOR_PICKUP);
+    public List<Order> getAvailableOrdersForDelivery(Long deliveryBoyId) {
+        User deliveryBoy = userRepository.findById(deliveryBoyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Delivery partner not found"));
+
+        if (!Boolean.TRUE.equals(deliveryBoy.getOnDuty())) {
+            return List.of();
+        }
+
+        Long tenantId = deliveryBoy.getTenant() != null ? deliveryBoy.getTenant().getId() : null;
+        return orderRepository.findByStatusAndDeliveryBoyIdIsNullAndTenantId(Order.Status.READY_FOR_PICKUP, tenantId);
     }
 
-    // Delivery boy order accept karta hai
+    public User setDeliveryDuty(Long deliveryBoyId, boolean onDuty) {
+        User deliveryBoy = userRepository.findById(deliveryBoyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Delivery partner not found"));
+        deliveryBoy.setOnDuty(onDuty);
+        return userRepository.save(deliveryBoy);
+    }
+
+    public Boolean getDeliveryDuty(Long deliveryBoyId) {
+        User deliveryBoy = userRepository.findById(deliveryBoyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Delivery partner not found"));
+        return deliveryBoy.getOnDuty();
+    }
+
     public Order acceptOrderForDelivery(Long deliveryBoyId, Long orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
@@ -263,7 +309,6 @@ public class OrderService {
         return orderRepository.save(order);
     }
 
-    // All order for delivery boy (active + history)
     public List<Order> getMyDeliveries(Long deliveryBoyId) {
         return orderRepository.findByDeliveryBoyIdOrderByCreatedAtDesc(deliveryBoyId);
     }
@@ -277,7 +322,59 @@ public class OrderService {
         return order;
     }
 
-    // pick order on seller shop
+    public Order getDeliveryOrderDetail(Long deliveryBoyId, Long orderId) {
+        return getOwnedDeliveryOrder(deliveryBoyId, orderId);
+    }
+
+    // Delivery boy ko customer ka naam + phone dikhana (sirf apne assigned order ke liye)
+    public Map<String, String> getCustomerInfoForDelivery(Long deliveryBoyId, Long orderId) {
+        Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
+        User customer = userRepository.findById(order.getCustomerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        return Map.of("name", customer.getName(), "phone", customer.getPhone());
+    }
+
+    // Seller (shop owner) ka naam + shop ka naam + phone
+    public Map<String, String> getSellerInfoForDelivery(Long deliveryBoyId, Long orderId) {
+        Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
+        Shop shop = shopRepository.findById(order.getShopId())
+                .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
+        User seller = userRepository.findById(shop.getSellerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Seller not found"));
+        return Map.of("name", seller.getName(), "shopName", shop.getShopName(), "phone", seller.getPhone());
+    }
+
+    /*
+     * ===== MASKED CALLING (Exotel) — ABHI USE NAHI HO RAHA =====
+     * Jab Exotel account ban jaaye (paid — Exophone/virtual number chahiye), to:
+     *   1) Upar wale TelephonyService import + @Autowired field uncomment karo
+     *   2) Neeche wale 2 methods uncomment karo
+     *   3) getCustomerInfoForDelivery() se "phone" hata do
+     *   4) getSellerInfoForDelivery() se "phone" hata do
+     *   5) DeliveryController.java me call-customer/call-seller endpoints uncomment karo
+     *   6) Frontend me dobara masked-call wala version use karo
+     *
+    public Map<String, String> callCustomerMasked(Long deliveryBoyId, Long orderId) {
+        Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
+        User deliveryBoy = userRepository.findById(deliveryBoyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Delivery partner not found"));
+        User customer = userRepository.findById(order.getCustomerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
+        return telephonyService.bridgeCall(deliveryBoy.getPhone(), customer.getPhone());
+    }
+
+    public Map<String, String> callSellerMasked(Long deliveryBoyId, Long orderId) {
+        Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
+        User deliveryBoy = userRepository.findById(deliveryBoyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Delivery partner not found"));
+        Shop shop = shopRepository.findById(order.getShopId())
+                .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
+        User seller = userRepository.findById(shop.getSellerId())
+                .orElseThrow(() -> new ResourceNotFoundException("Seller not found"));
+        return telephonyService.bridgeCall(deliveryBoy.getPhone(), seller.getPhone());
+    }
+    */
+
     public Order markPickedUp(Long deliveryBoyId, Long orderId) {
         Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
         if (order.getStatus() != Order.Status.READY_FOR_PICKUP) {
@@ -290,7 +387,6 @@ public class OrderService {
         return order;
     }
 
-    // on the way for customer
     public Order markInTransit(Long deliveryBoyId, Long orderId) {
         Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
         if (order.getStatus() != Order.Status.PICKED_UP) {
@@ -303,19 +399,10 @@ public class OrderService {
         return order;
     }
 
-    // Customer order status update notification
     private void notifyCustomer(Order order, String title, String body) {
-        try {
-            com.paasmart.backend.auth.User customer = userRepository.findById(order.getCustomerId()).orElse(null);
-            if (customer != null && customer.getPushToken() != null) {
-                pushNotificationService.send(customer.getPushToken(), title, body);
-            }
-        } catch (Exception e) {
-            System.out.println("Customer notification failed: " + e.getMessage());
-        }
+        notificationService.notify(order.getCustomerId(), Notification.Type.ORDER_UPDATE, title, body, order.getId());
     }
 
-    // verify OTP to conform Delivery
     public Order confirmDelivery(Long deliveryBoyId, Long orderId, String otp) {
         Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
 
@@ -331,6 +418,14 @@ public class OrderService {
         order = orderRepository.save(order);
         logStatusHistory(orderId, Order.Status.DELIVERED, deliveryBoyId, "Delivered successfully");
         notifyCustomer(order, "Order Delivered", "Your order #" + order.getId() + " has been delivered. Enjoy!");
+
+        walletService.credit(
+                deliveryBoyId,
+                order.getDeliveryFee(),
+                com.paasmart.backend.wallet.WalletTransaction.Type.DELIVERY_EARNING,
+                "Delivery earning for order #" + order.getId(),
+                order.getId()
+        );
         return order;
     }
 
@@ -343,13 +438,30 @@ public class OrderService {
             history.setNote(note);
             orderStatusHistoryRepository.save(history);
         } catch (Exception e) {
-            System.out.println("Failed to log order status history: " + e.getMessage());
+            log.warn("Failed to log order status history", e);
         }
     }
 
-    // Timeline fetch karne ke liye — customer/seller dono use kar sakte hain
     public List<OrderStatusHistory> getOrderTimeline(Long orderId, Long requesterId) {
-        getOrderById(orderId, requesterId);   // ye method already ownership verify karta hai
+        getOrderById(orderId, requesterId);
         return orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(orderId);
+    }
+
+    // Customer ke liye — delivery boy ka current location, sirf tab jab order actually
+// pickup ho chuka ho aur ek delivery boy assign ho (privacy: baaki states me kuch nahi dikhega)
+    public DeliveryLocationResponse getDeliveryLocation(Order order) {
+        boolean isTrackable = order.getDeliveryBoyId() != null
+                && (order.getStatus() == Order.Status.PICKED_UP || order.getStatus() == Order.Status.IN_TRANSIT);
+
+        if (!isTrackable) {
+            return new DeliveryLocationResponse(null, null, null, false);
+        }
+
+        com.paasmart.backend.auth.User deliveryBoy = userRepository.findById(order.getDeliveryBoyId()).orElse(null);
+        if (deliveryBoy == null || deliveryBoy.getCurrentLat() == null || deliveryBoy.getCurrentLng() == null) {
+            return new DeliveryLocationResponse(null, null, null, false);
+        }
+
+        return new DeliveryLocationResponse(deliveryBoy.getCurrentLat(), deliveryBoy.getCurrentLng(), deliveryBoy.getLocationUpdatedAt(), true);
     }
 }

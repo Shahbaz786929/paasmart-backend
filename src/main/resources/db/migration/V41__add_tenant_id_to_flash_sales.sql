@@ -1,0 +1,1 @@
+ALTER TABLE flash_sales ADD COLUMN tenant_id BIGINT REFERENCES tenants(id);

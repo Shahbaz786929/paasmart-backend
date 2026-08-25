@@ -12,6 +12,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByShopIdOrderByCreatedAtDesc(Long shopId);
 
     List<Order> findByStatusAndDeliveryBoyIdIsNull(Order.Status status);
+    List<Order> findByStatusAndDeliveryBoyIdIsNullAndTenantId(Order.Status status, Long tenantId);
     List<Order> findByDeliveryBoyIdOrderByCreatedAtDesc(Long deliveryBoyId);
 
     // ---- Admin dashboard ke liye ----
@@ -38,6 +39,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // --- Tenant-scoped (future: TENANT_ADMIN apne city ka order-dashboard banayega isse) ---
     List<Order> findByTenantIdOrderByCreatedAtDesc(Long tenantId);
     long countByTenantIdAndCreatedAtAfter(Long tenantId, LocalDateTime dateTime);
+    long countByTenantId(Long tenantId);
 
     @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status = 'COMPLETED' AND o.tenantId = :tenantId")
     java.math.BigDecimal getTenantTotalRevenue(@Param("tenantId") Long tenantId);

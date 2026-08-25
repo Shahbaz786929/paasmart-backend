@@ -4,6 +4,8 @@ import com.paasmart.backend.common.CloudinaryService;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
+import com.paasmart.backend.notification.Notification;
+import com.paasmart.backend.notification.NotificationService;
 import com.paasmart.backend.notification.PushNotificationService;
 import com.paasmart.backend.order.Order;
 import com.paasmart.backend.order.OrderItem;
@@ -35,6 +37,7 @@ public class ReturnRequestService {
     @Autowired private CloudinaryService cloudinaryService;
     @Autowired private WalletService walletService;
     @Autowired private PushNotificationService pushNotificationService;
+    @Autowired private NotificationService notificationService;
 
     private static final int RETURN_WINDOW_DAYS = 7;
     private static final List<ReturnRequest.Status> ACTIVE_STATUSES =
@@ -146,7 +149,7 @@ public class ReturnRequestService {
             request.setStatus(ReturnRequest.Status.REFUNDED);
             request = returnRequestRepository.save(request);
 
-            notifyCustomer(request.getCustomerId(), "Return Approved & Refunded",
+            notifyCustomer(request.getCustomerId(), order.getId(), "Return Approved & Refunded",
                     "Your return has been approved. Rs. " + refundAmount + " has been credited to your wallet.");
         } else {
             request.setStatus(ReturnRequest.Status.REJECTED);
@@ -154,7 +157,7 @@ public class ReturnRequestService {
             request.setResolvedAt(java.time.LocalDateTime.now());
             request = returnRequestRepository.save(request);
 
-            notifyCustomer(request.getCustomerId(), "Return Rejected",
+            notifyCustomer(request.getCustomerId(), order.getId(), "Return Rejected",
                     "Your return request was rejected. Reason: " + dto.getRejectionReason());
         }
 
@@ -162,26 +165,12 @@ public class ReturnRequestService {
     }
 
     private void notifySeller(Order order, String title, String body) {
-        try {
-            Shop shop = shopRepository.findById(order.getShopId()).orElse(null);
-            if (shop == null) return;
-            User seller = userRepository.findById(shop.getSellerId()).orElse(null);
-            if (seller != null && seller.getPushToken() != null) {
-                pushNotificationService.send(seller.getPushToken(), title, body);
-            }
-        } catch (Exception e) {
-            System.out.println("Seller notification failed: " + e.getMessage());
-        }
+        Shop shop = shopRepository.findById(order.getShopId()).orElse(null);
+        if (shop == null) return;
+        notificationService.notify(shop.getSellerId(), Notification.Type.RETURN_REQUEST, title, body, order.getId());
     }
 
-    private void notifyCustomer(Long customerId, String title, String body) {
-        try {
-            User customer = userRepository.findById(customerId).orElse(null);
-            if (customer != null && customer.getPushToken() != null) {
-                pushNotificationService.send(customer.getPushToken(), title, body);
-            }
-        } catch (Exception e) {
-            System.out.println("Customer notification failed: " + e.getMessage());
-        }
+    private void notifyCustomer(Long customerId, Long orderId, String title, String body) {
+        notificationService.notify(customerId, Notification.Type.RETURN_REQUEST, title, body, orderId);
     }
 }

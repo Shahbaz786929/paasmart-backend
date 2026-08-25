@@ -14,15 +14,19 @@ import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
 import com.paasmart.backend.seller.ShopRepository;
 import com.paasmart.backend.seller.ShopService;
+import com.paasmart.backend.settings.SettingsService;
 import com.paasmart.backend.wallet.WalletService;
 import org.springframework.stereotype.Service;
+import com.paasmart.backend.seller.GroUtils;
 
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.util.List;
-import java.util.Random;
 
 @Service
 public class CheckoutServiceImpl implements CheckoutService {
+
+    private static final SecureRandom secureRandom = new SecureRandom();
 
     private final UserRepository userRepository;
     private final AddressRepository addressRepository;
@@ -36,6 +40,7 @@ public class CheckoutServiceImpl implements CheckoutService {
     private final ShopService shopService;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final FlashSaleService flashSaleService;
+    private final SettingsService settingsService;
 
     public CheckoutServiceImpl(UserRepository userRepository,
                                AddressRepository addressRepository,
@@ -48,7 +53,8 @@ public class CheckoutServiceImpl implements CheckoutService {
                                ShopRepository shopRepository,
                                ShopService shopService,
                                OrderStatusHistoryRepository orderStatusHistoryRepository,
-                               FlashSaleService flashSaleService) {
+                               FlashSaleService flashSaleService,
+                               SettingsService settingsService) {
 
         this.userRepository = userRepository;
         this.addressRepository = addressRepository;
@@ -62,6 +68,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         this.shopService = shopService;
         this.orderStatusHistoryRepository = orderStatusHistoryRepository;
         this.flashSaleService = flashSaleService;
+        this.settingsService = settingsService;
     }
 
     @Override
@@ -98,12 +105,16 @@ public class CheckoutServiceImpl implements CheckoutService {
         Order order = new Order();
         order.setCustomerId(customer.getId());
         order.setShopId(firstProduct.getShopId());
+        order.setTenantId(shop.getTenant().getId());
         order.setAddress(address);
         order.setDeliveryAddress(
                 address.getHouseNo() + ", " + address.getArea() + ", "
                         + address.getCity() + ", " + address.getState() + "-" + address.getPincode()
         );
-        order.setDeliveryFee(new BigDecimal("40"));
+        double distanceKm = GroUtils.distanceKmOrNull(shop.getLatitude(), shop.getLongitude(), address.getLatitude(), address.getLongitude()) != null
+                ? GroUtils.distanceKm(shop.getLatitude(), shop.getLongitude(), address.getLatitude(), address.getLongitude())
+                : 1.0; // coordinates missing -> charge only the base fee
+        order.setDeliveryFee(settingsService.calculateDeliveryFee(distanceKm));
         order.setPaymentMode(
                 request.getPaymentMethod().equalsIgnoreCase("COD")
                         ? Order.PaymentMode.COD
@@ -111,8 +122,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         );
         order.setStatus(Order.Status.PLACED);
 
-        Random random = new Random();
-        order.setOtp(String.valueOf(100000 + random.nextInt(900000)));
+        order.setOtp(String.valueOf(100000 + secureRandom.nextInt(900000)));
 
         BigDecimal grandTotal = BigDecimal.ZERO;
         for (Cart cart : cartItems) {

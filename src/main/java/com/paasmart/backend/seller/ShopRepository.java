@@ -17,6 +17,7 @@ public interface ShopRepository extends JpaRepository<Shop, Long> {
     List<Shop> findByStatusAndCityIgnoreCaseAndTenantId(Shop.Status status, String city, Long tenantId);
     List<Shop> findByStatusAndCategoryAndTenantId(Shop.Status status, Shop.Category category, Long tenantId);
     Optional<Shop> findByIdAndTenantId(Long id, Long tenantId);
+    List<Shop> findByTenantId(Long tenantId);
 
     // --- Unscoped versions (sirf ADMIN/platform-wide dashboard ke liye) ---
     List<Shop> findByStatus(Shop.Status status);

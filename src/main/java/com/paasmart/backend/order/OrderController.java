@@ -48,4 +48,10 @@ public class OrderController {
     public ResponseEntity<List<OrderStatusHistory>> getTimeline(@PathVariable Long id) {
         return ResponseEntity.ok(orderService.getOrderTimeline(id, currentUserId()));
     }
+
+    @GetMapping("/{id}/delivery-location")
+    public ResponseEntity<?> getDeliveryLocation(@PathVariable Long id) {
+        Order order = orderService.getOrderById(id, currentUserId()); // ownership check yahin ho jaata hai
+        return ResponseEntity.ok(orderService.getDeliveryLocation(order));
+    }
 }

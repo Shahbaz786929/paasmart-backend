@@ -24,6 +24,7 @@ public class Shop {
     private Double latitude;
     private Double longitude;
     private String documentsUrl;
+    private String logoUrl;
 
     private Double deliveryRadiusKm = 5.0;
 
@@ -60,6 +61,8 @@ public class Shop {
     public void setLongitude(Double longitude) { this.longitude = longitude; }
     public String getDocumentsUrl() { return documentsUrl; }
     public void setDocumentsUrl(String documentsUrl) { this.documentsUrl = documentsUrl; }
+    public String getLogoUrl() { return logoUrl; }
+    public void setLogoUrl(String logoUrl) { this.logoUrl = logoUrl; }
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     public String getRejectionReason() { return rejectionReason; }

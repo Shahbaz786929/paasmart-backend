@@ -45,6 +45,7 @@ public class FlashSaleService {
         FlashSale sale = new FlashSale();
         sale.setProductId(product.getId());
         sale.setShopId(shop.getId());
+        sale.setTenantId(shop.getTenant().getId());
         sale.setDiscountPercent(req.getDiscountPercent());
         sale.setStartsAt(req.getStartsAt());
         sale.setEndsAt(req.getEndsAt());
@@ -89,7 +90,8 @@ public class FlashSaleService {
 
     // Sabhi live deals — customer app ke "Live Deals" section ke liye
     public List<ActiveDealResponse> getAllActiveDeals() {
-        List<FlashSale> activeSales = flashSaleRepository.findAllCurrentlyActive(LocalDateTime.now());
+        List<FlashSale> activeSales = flashSaleRepository.findAllCurrentlyActive(
+                com.paasmart.backend.tenant.TenantContext.getTenantId(), LocalDateTime.now());
 
         return activeSales.stream()
                 .map(sale -> {
@@ -97,7 +99,7 @@ public class FlashSaleService {
                     if (product == null) return null;
                     BigDecimal dealPrice = applyDiscount(product.getPrice(), sale.getDiscountPercent());
                     return new ActiveDealResponse(
-                            sale.getId(), product.getId(), product.getName(),
+                            sale.getId(), product.getId(), product.getName(), product.getImages(),
                             product.getPrice(), dealPrice, sale.getDiscountPercent(), sale.getEndsAt()
                     );
                 })

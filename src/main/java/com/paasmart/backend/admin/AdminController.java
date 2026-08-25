@@ -1,5 +1,6 @@
 package com.paasmart.backend.admin;
 
+import com.paasmart.backend.admin.dto.AdminUserResponse;
 import com.paasmart.backend.admin.dto.DashboardStats;
 import com.paasmart.backend.admin.dto.ShopRejectRequest;
 import com.paasmart.backend.auth.User;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -45,18 +47,21 @@ public class AdminController {
 
     // ---- Users ----
     @GetMapping("/users")
-    public ResponseEntity<List<User>> allUsers() {
-        return ResponseEntity.ok(adminService.getAllUsers());
+    public ResponseEntity<List<AdminUserResponse>> allUsers() {
+        List<AdminUserResponse> users = adminService.getAllUsers().stream()
+                .map(AdminUserResponse::new)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(users);
     }
 
     @PutMapping("/users/{id}/block")
-    public ResponseEntity<User> blockUser(@PathVariable Long id) {
-        return ResponseEntity.ok(adminService.blockUser(id));
+    public ResponseEntity<AdminUserResponse> blockUser(@PathVariable Long id) {
+        return ResponseEntity.ok(new AdminUserResponse(adminService.blockUser(id)));
     }
 
     @PutMapping("/users/{id}/unblock")
-    public ResponseEntity<User> unblockUser(@PathVariable Long id) {
-        return ResponseEntity.ok(adminService.unblockUser(id));
+    public ResponseEntity<AdminUserResponse> unblockUser(@PathVariable Long id) {
+        return ResponseEntity.ok(new AdminUserResponse(adminService.unblockUser(id)));
     }
 
     // ---- Orders ----

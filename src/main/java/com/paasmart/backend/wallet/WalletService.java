@@ -4,6 +4,8 @@ import com.paasmart.backend.auth.User;
 import com.paasmart.backend.auth.UserRepository;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
+import com.paasmart.backend.notification.Notification;
+import com.paasmart.backend.notification.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +17,7 @@ public class WalletService {
 
     @Autowired private UserRepository userRepository;
     @Autowired private WalletTransactionRepository walletTransactionRepository;
+    @Autowired private NotificationService notificationService;
 
     public BigDecimal getBalance(Long userId) {
         User user = userRepository.findById(userId)
@@ -41,6 +44,7 @@ public class WalletService {
         txn.setDescription(description);
         txn.setOrderId(orderId);
         walletTransactionRepository.save(txn);
+        notificationService.notify(userId, Notification.Type.WALLET, "Wallet Credited", description, orderId);
     }
 
     // Checkout ke waqt wallet se paise katna

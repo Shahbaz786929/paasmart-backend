@@ -41,6 +41,7 @@ public class ShopService {
         shop.setLatitude(req.getLatitude());
         shop.setLongitude(req.getLongitude());
         shop.setDocumentsUrl(req.getDocumentsUrl());
+        shop.setLogoUrl(req.getLogoUrl());
         shop.setStoreSlug(generateSlug(req.getShopName(), sellerId));
         shop.setStatus(Shop.Status.PENDING);
         shop.setDeliveryRadiusKm(req.getDeliveryRadiusKm() != null ? req.getDeliveryRadiusKm() : 5.0);
@@ -64,6 +65,7 @@ public class ShopService {
         shop.setCategory(Shop.Category.valueOf(req.getCategory().toUpperCase()));
         shop.setAddress(req.getAddress());
         shop.setCity(req.getCity());
+        shop.setLogoUrl(req.getLogoUrl());
         return shopRepository.save(shop);
     }
 

@@ -6,6 +6,8 @@ import com.paasmart.backend.chat.dto.ConversationSummary;
 import com.paasmart.backend.chat.dto.SendMessageRequest;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
+import com.paasmart.backend.notification.Notification;
+import com.paasmart.backend.notification.NotificationService;
 import com.paasmart.backend.notification.PushNotificationService;
 import com.paasmart.backend.order.Order;
 import com.paasmart.backend.order.OrderRepository;
@@ -17,9 +19,13 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
     @Autowired private ChatConversationRepository conversationRepository;
     @Autowired private ChatMessageRepository messageRepository;
@@ -27,6 +33,7 @@ public class ChatService {
     @Autowired private ShopRepository shopRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private PushNotificationService pushNotificationService;
+    @Autowired private NotificationService notificationService;
 
     // Order ke liye conversation dhoondo, na ho to bana do (dono taraf se call ho sakta hai)
     public ChatConversation getOrCreateConversation(Long requesterId, Long orderId) {
@@ -69,19 +76,14 @@ public class ChatService {
                 ? conversation.getSellerId()
                 : conversation.getCustomerId();
 
-        try {
-            User recipient = userRepository.findById(recipientId).orElse(null);
-            User sender = userRepository.findById(senderId).orElse(null);
-            if (recipient != null && recipient.getPushToken() != null) {
-                pushNotificationService.send(
-                        recipient.getPushToken(),
-                        "New message from " + (sender != null ? sender.getName() : "someone"),
-                        req.getMessage().length() > 100 ? req.getMessage().substring(0, 100) + "..." : req.getMessage()
-                );
-            }
-        } catch (Exception e) {
-            System.out.println("Chat notification failed: " + e.getMessage());
-        }
+        User sender = userRepository.findById(senderId).orElse(null);
+        notificationService.notify(
+                recipientId,
+                Notification.Type.CHAT_MESSAGE,
+                "New message from " + (sender != null ? sender.getName() : "someone"),
+                req.getMessage().length() > 100 ? req.getMessage().substring(0, 100) + "..." : req.getMessage(),
+                conversation.getOrderId()
+        );
 
         return message;
     }

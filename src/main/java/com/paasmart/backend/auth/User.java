@@ -23,6 +23,7 @@ public class User {
 
     @Column(nullable = false, unique = true)
     private String phone;
+    private String password;
 
     @Enumerated(EnumType.STRING)
     private Role role;
@@ -40,10 +41,14 @@ public class User {
     private LocalDateTime otpExpiresAt;
     private String pushToken;
     private LocalDateTime createdAt = LocalDateTime.now();
+    private Double currentLat;
+    private Double currentLng;
+    private LocalDateTime locationUpdatedAt;
 
     private String referralCode;
     private Long referredBy;
     private java.math.BigDecimal walletBalance = java.math.BigDecimal.ZERO;
+    private Boolean onDuty = false;
 
     @OneToMany(mappedBy = "customer")
     private List<Cart> carts;
@@ -175,4 +180,14 @@ public class User {
     public void setWalletBalance(java.math.BigDecimal walletBalance) { this.walletBalance = walletBalance; }
     public Tenant getTenant() { return tenant; }
     public void setTenant(Tenant tenant) { this.tenant = tenant; }
+    public Boolean getOnDuty() { return onDuty; }
+    public void setOnDuty(Boolean onDuty) { this.onDuty = onDuty; }
+    public Double getCurrentLat() { return currentLat; }
+    public void setCurrentLat(Double currentLat) { this.currentLat = currentLat; }
+    public Double getCurrentLng() { return currentLng; }
+    public void setCurrentLng(Double currentLng) { this.currentLng = currentLng; }
+    public LocalDateTime getLocationUpdatedAt() { return locationUpdatedAt; }
+    public void setLocationUpdatedAt(LocalDateTime locationUpdatedAt) { this.locationUpdatedAt = locationUpdatedAt; }
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
 }
