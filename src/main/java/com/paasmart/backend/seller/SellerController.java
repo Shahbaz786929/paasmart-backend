@@ -1,11 +1,15 @@
 package com.paasmart.backend.seller;
 
+import com.paasmart.backend.common.CloudinaryService;
 import com.paasmart.backend.seller.dto.ShopRegisterRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/seller")
@@ -15,9 +19,15 @@ public class SellerController {
     @Autowired private com.paasmart.backend.product.ProductService productService;
     @Autowired private com.paasmart.backend.order.OrderService orderService;
     @Autowired private SellerDashboardService sellerDashboardService;
+    @Autowired private CloudinaryService cloudinaryService;
 
     private Long currentUserId() {
         return (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    }
+
+    @GetMapping("/shop")
+    public ResponseEntity<?> getMyShop() {
+        return ResponseEntity.ok(shopService.getMyShop(currentUserId()));
     }
 
     @GetMapping("/dashboard")
@@ -75,5 +85,11 @@ public class SellerController {
     @PutMapping("/shop/delivery-radius")
     public ResponseEntity<Shop> updateDeliveryRadius(@RequestParam Double radiusKm) {
         return ResponseEntity.ok(shopService.updateDeliveryRadius(currentUserId(), radiusKm));
+    }
+
+    @PostMapping("/products/upload-image")
+    public ResponseEntity<?> uploadProductImage(@RequestParam("image") MultipartFile image) {
+        String url = cloudinaryService.uploadImage(image, "products");
+        return ResponseEntity.ok(Map.of("url", url));
     }
 }

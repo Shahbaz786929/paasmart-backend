@@ -67,4 +67,15 @@ public class AuthController {
     public ResponseEntity<?> emailLogin(@Valid @RequestBody EmailLoginRequest req) {
         return ResponseEntity.ok(authService.emailLogin(req));
     }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest req) {
+        return ResponseEntity.ok(authService.forgotPasswordInit(req));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
+        authService.resetPassword(req);
+        return ResponseEntity.ok("Password reset successfully");
+    }
 }

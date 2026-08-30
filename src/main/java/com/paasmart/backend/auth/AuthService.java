@@ -62,6 +62,9 @@ public class AuthService {
     @Autowired
     private EmailService emailService;
 
+    @Autowired
+    private PasswordResetRepository passwordResetRepository;
+
     public String register(RegisterRequest req) {
         if (userRepository.existsByPhone(req.getPhone())) {
             throw new BadRequestExceprion("This Phone Number Already Register");
@@ -300,6 +303,55 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
         return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
+    }
+
+
+    @Transactional
+    public String forgotPasswordInit(ForgotPasswordRequest req) {
+        User user = userRepository.findByEmail(req.getEmail()).orElse(null);
+
+        // Security ke liye: chahe email exist na kare, same success message dete hain
+        // — isse attacker ko pata nahi chalega ki konse emails registered hain.
+        if (user == null || user.getPassword() == null) {
+            return "If an account exists with this email, a reset code has been sent.";
+        }
+
+        passwordResetRepository.deleteByEmail(req.getEmail());
+
+        String otp = String.valueOf((int) (Math.random() * 900000) + 100000);
+
+        PasswordReset reset = new PasswordReset();
+        reset.setEmail(req.getEmail());
+        reset.setOtpCode(otp);
+        reset.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+        passwordResetRepository.save(reset);
+
+        emailService.sendOtpEmail(req.getEmail(), otp);
+
+        return "If an account exists with this email, a reset code has been sent.";
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest req) {
+        PasswordReset reset = passwordResetRepository
+                .findTopByEmailOrderByCreatedAtDesc(req.getEmail())
+                .orElseThrow(() -> new BadRequestExceprion("No pending reset request found for this email"));
+
+        if (reset.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BadRequestExceprion("This code has expired. Please request a new one.");
+        }
+
+        if (!reset.getOtpCode().equals(req.getOtp())) {
+            throw new BadRequestExceprion("Invalid code");
+        }
+
+        User user = userRepository.findByEmail(req.getEmail())
+                .orElseThrow(() -> new BadRequestExceprion("Account not found"));
+
+        user.setPassword(passwordEncoder.encode(req.getNewPassword()));
+        userRepository.save(user);
+
+        passwordResetRepository.deleteByEmail(req.getEmail());
     }
 
     public AuthResponse emailLogin(EmailLoginRequest req) {

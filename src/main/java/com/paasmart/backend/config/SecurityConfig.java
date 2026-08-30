@@ -50,7 +50,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/docs", "/docs/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login-otp", "/api/v1/auth/verify-otp", "/api/v1/auth/google", "/api/v1/auth/google-config", "/api/v1/auth/email-register", "/api/v1/auth/email-register-verify", "/api/v1/auth/email-login").permitAll()
+                        .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login-otp", "/api/v1/auth/verify-otp", "/api/v1/auth/google", "/api/v1/auth/google-config", "/api/v1/auth/email-register", "/api/v1/auth/email-register-verify", "/api/v1/auth/email-login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/web-push/vapid-public-key").permitAll()
                         .requestMatchers("/api/web-push/**").authenticated()
                         .requestMatchers("/api/v1/auth/**").authenticated()
