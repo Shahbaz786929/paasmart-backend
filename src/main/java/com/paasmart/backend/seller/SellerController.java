@@ -82,10 +82,6 @@ public class SellerController {
         return ResponseEntity.ok(shopService.updateShop(currentUserId(), req));
     }
 
-    @PutMapping("/shop/delivery-radius")
-    public ResponseEntity<Shop> updateDeliveryRadius(@RequestParam Double radiusKm) {
-        return ResponseEntity.ok(shopService.updateDeliveryRadius(currentUserId(), radiusKm));
-    }
 
     @PostMapping("/products/upload-image")
     public ResponseEntity<?> uploadProductImage(@RequestParam("image") MultipartFile image) {

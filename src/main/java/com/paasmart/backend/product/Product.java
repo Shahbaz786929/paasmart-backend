@@ -1,5 +1,6 @@
 package com.paasmart.backend.product;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.paasmart.backend.wishlist.Wishlist;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -30,6 +31,7 @@ public class Product {
     private Long tenantId;
 
     @OneToMany(mappedBy = "product")
+    @JsonIgnore
     private List<Wishlist> wishlists;
 
     // Getters and setters
@@ -63,6 +65,7 @@ public class Product {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public Boolean getAvailable() { return isAvailable; }
     public void setAvailable(Boolean available) {isAvailable = available; }
+    @JsonIgnore
     public List<Wishlist> getWishlists() { return wishlists; }
     public void setWishlists(List<Wishlist> wishlists) { this.wishlists = wishlists; }
     public Long getTenantId() { return tenantId; }
