@@ -15,23 +15,22 @@ import java.util.Map;
 public class EmailService {
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${resend.api-key:}")
-    private String resendApiKey;
+    @Value("${brevo.api-key:}")
+    private String brevoApiKey;
 
-    @Value("${resend.from-email:onboarding@resend.dev}")
-    private String fromEmail;
+    @Value("${brevo.sender-email:}")
+    private String senderEmail;
 
-    public EmailService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
+    @Value("${brevo.sender-name:PaasMart}")
+    private String senderName;
 
     public void sendOtpEmail(String toEmail, String otp) {
         try {
             String html = """
                     <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-                        <h2>PaaSmart Seller Verification</h2>
+                        <h2>PaasMart Verification</h2>
                         <p>Your verification code is:</p>
 
                         <p style="
@@ -51,18 +50,19 @@ public class EmailService {
                     """.formatted(otp);
 
             Map<String, Object> payload = Map.of(
-                    "from", fromEmail,
-                    "to", List.of(toEmail),
-                    "subject", "Your PaaSmart Seller verification code",
-                    "html", html
+                    "sender", Map.of("name", senderName, "email", senderEmail),
+                    "to", List.of(Map.of("email", toEmail)),
+                    "subject", "Your PaasMart verification code",
+                    "htmlContent", html
             );
 
             String json = objectMapper.writeValueAsString(payload);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.resend.com/emails"))
-                    .header("Authorization", "Bearer " + resendApiKey)
+                    .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                    .header("api-key", brevoApiKey)
                     .header("Content-Type", "application/json")
+                    .header("accept", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .build();
 
