@@ -17,10 +17,12 @@ import com.paasmart.backend.seller.ShopService;
 import com.paasmart.backend.settings.SettingsService;
 import com.paasmart.backend.wallet.WalletService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.paasmart.backend.seller.GroUtils;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -71,7 +73,24 @@ public class CheckoutServiceImpl implements CheckoutService {
         this.settingsService = settingsService;
     }
 
+    // Ek helper class — locked product ka snapshot rakhta hai taaki order-items
+    // banate waqt product dobara fetch na karna pade (lock sirf isi transaction ke andar valid hai).
+    private static class LockedItem {
+        final Long productId;
+        final Integer quantity;
+        final BigDecimal unitPrice;
+        final BigDecimal subtotal;
+
+        LockedItem(Long productId, Integer quantity, BigDecimal unitPrice, BigDecimal subtotal) {
+            this.productId = productId;
+            this.quantity = quantity;
+            this.unitPrice = unitPrice;
+            this.subtotal = subtotal;
+        }
+    }
+
     @Override
+    @Transactional // pura checkout ek hi DB transaction me — beech me kahi bhi fail hua to sab kuch (stock decrement, wallet debit, coupon usage) automatically rollback ho jayega
     public CheckoutResponse placeOrder(Long customerId, CheckoutRequest request) {
 
         User customer = userRepository.findById(customerId)
@@ -124,16 +143,29 @@ public class CheckoutServiceImpl implements CheckoutService {
 
         order.setOtp(String.valueOf(100000 + secureRandom.nextInt(900000)));
 
+        // Sab products ko row-lock karke, stock validate + decrement ek hi jagah karte hai.
+        // Isse do customers same last item ek saath order nahi kar payenge (pehle ka TOCTOU race-condition bug fix),
+        // aur flash-sale ka effectivePrice ab actually use hota hai total me (pehle ye calculate hoke bhi ignore ho raha tha).
         BigDecimal grandTotal = BigDecimal.ZERO;
+        List<LockedItem> lockedItems = new ArrayList<>();
         for (Cart cart : cartItems) {
-            Product product = productRepository.findById(cart.getProduct().getId())
+            Product product = productRepository.findByIdForUpdate(cart.getProduct().getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product Not Found"));
+
             if (product.getStockQty() < cart.getQuantity()) {
-                throw new RuntimeException(product.getName() + " Out Of Stock");
+                throw new com.paasmart.backend.exception.BadRequestExceprion(product.getName() + " is out of stock (only " + product.getStockQty() + " left)");
             }
+
             BigDecimal effectivePrice = flashSaleService.getEffectivePrice(product);
-            BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity()));
+            BigDecimal subtotal = effectivePrice.multiply(BigDecimal.valueOf(cart.getQuantity()));
             grandTotal = grandTotal.add(subtotal);
+
+            // Stock yahi decrement kar dete hai — agar checkout ke aage kahi bhi fail hua
+            // (coupon invalid, etc.) to @Transactional ki wajah se ye decrement bhi rollback ho jayega.
+            product.setStockQty(product.getStockQty() - cart.getQuantity());
+            productRepository.save(product);
+
+            lockedItems.add(new LockedItem(product.getId(), cart.getQuantity(), effectivePrice, subtotal));
         }
 
         BigDecimal totalBeforeDiscount = grandTotal.add(order.getDeliveryFee());
@@ -169,20 +201,16 @@ public class CheckoutServiceImpl implements CheckoutService {
             }
         }
 
-        // create order items and decrease stock
-        for (Cart cart : cartItems) {
-            Product product = productRepository.findById(cart.getProduct().getId()).get();
-
+        // Order items banate hai — stock pehle hi lock ke saath decrement ho chuka hai upar,
+        // isliye yaha dobara product fetch/decrement karne ki zaroorat nahi.
+        for (LockedItem locked : lockedItems) {
             OrderItem item = new OrderItem();
             item.setOrderId(order.getId());
-            item.setProductId(product.getId());
-            item.setQuantity(cart.getQuantity());
-            item.setUnitPrice(product.getPrice());
-            item.setSubtotal(product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity())));
+            item.setProductId(locked.productId);
+            item.setQuantity(locked.quantity);
+            item.setUnitPrice(locked.unitPrice);
+            item.setSubtotal(locked.subtotal);
             orderItemRepository.save(item);
-
-            product.setStockQty(product.getStockQty() - cart.getQuantity());
-            productRepository.save(product);
         }
 
         cartRepository.deleteAll(cartItems);

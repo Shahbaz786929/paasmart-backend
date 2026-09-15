@@ -8,6 +8,7 @@ import com.paasmart.backend.notification.Notification;
 import com.paasmart.backend.notification.NotificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -29,9 +30,12 @@ public class WalletService {
         return walletTransactionRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
-    // Wallet me paise credit karna (referral bonus, welcome bonus, refund)
+    // Credit money to wallet (referral bonus, welcome bonus, refund).
+    // @Transactional + row-lock so two simultaneous credits/debits on the same
+    // user can't overwrite each other's balance update (lost-update race fix).
+    @Transactional
     public void credit(Long userId, BigDecimal amount, WalletTransaction.Type type, String description, Long orderId) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         user.setWalletBalance(user.getWalletBalance().add(amount));
@@ -47,9 +51,10 @@ public class WalletService {
         notificationService.notify(userId, Notification.Type.WALLET, "Wallet Credited", description, orderId);
     }
 
-    // Checkout ke waqt wallet se paise katna
+    // Debit money from wallet at checkout time.
+    @Transactional
     public void debit(Long userId, BigDecimal amount, String description, Long orderId) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (user.getWalletBalance().compareTo(amount) < 0) {

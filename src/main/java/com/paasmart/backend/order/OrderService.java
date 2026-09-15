@@ -2,6 +2,7 @@ package com.paasmart.backend.order;
 
 import com.paasmart.backend.auth.User;
 import com.paasmart.backend.auth.UserRepository;
+import com.paasmart.backend.coupon.CouponUsageRepository;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
@@ -18,6 +19,8 @@ import com.paasmart.backend.seller.ShopRepository;
 import com.paasmart.backend.tenant.TenantContext;
 // import com.paasmart.backend.telephony.TelephonyService; // Masked calling — baad me chahiye ho to uncomment karo
 import com.paasmart.backend.wallet.WalletService;
+import com.paasmart.backend.wallet.WalletTransaction;
+import com.paasmart.backend.wallet.WalletTransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +45,8 @@ public class OrderService {
     @Autowired private WalletService walletService;
     @Autowired private OrderStatusHistoryRepository orderStatusHistoryRepository;
     @Autowired private NotificationService notificationService;
+    @Autowired private WalletTransactionRepository walletTransactionRepository;
+    @Autowired private CouponUsageRepository couponUsageRepository;
     // @Autowired private TelephonyService telephonyService; // Masked calling — baad me chahiye ho to uncomment karo
 
     // forward-only status flow
@@ -147,6 +152,7 @@ public class OrderService {
         return order;
     }
 
+    @Transactional // stock restore + wallet refund + coupon release sab ek saath, ya kuch nahi
     public void cancelOrder(Long orderId, Long customerId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
@@ -157,6 +163,32 @@ public class OrderService {
         if (order.getStatus() != Order.Status.PLACED && order.getStatus() != Order.Status.CONFIRMED) {
             throw new BadRequestExceprion("This order can no longer be canceled because it has already been packed");
         }
+
+        // 1) Stock wapas restore karo — jitna order ke items me decrement hua tha
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        for (OrderItem item : items) {
+            productRepository.findById(item.getProductId()).ifPresent(product -> {
+                product.setStockQty(product.getStockQty() + item.getQuantity());
+                productRepository.save(product);
+            });
+        }
+
+        // 2) Agar is order ke liye wallet se paisa kata tha, to wapas credit karo
+        walletTransactionRepository.findByOrderIdAndType(orderId, WalletTransaction.Type.ORDER_PAYMENT)
+                .ifPresent(debitTxn -> {
+                    BigDecimal amountToRefund = debitTxn.getAmount().abs(); // debit txn negative amount me save hota hai
+                    walletService.credit(
+                            customerId,
+                            amountToRefund,
+                            WalletTransaction.Type.REFUND,
+                            "Refund for cancelled order #" + orderId,
+                            orderId
+                    );
+                });
+
+        // 3) Coupon usage release karo taaki customer usi coupon ko dobara use kar sake
+        couponUsageRepository.findByOrderId(orderId).ifPresent(couponUsageRepository::delete);
+
         order.setStatus(Order.Status.CANCELLED);
         orderRepository.save(order);
         logStatusHistory(orderId, Order.Status.CANCELLED, customerId, "Cancelled by customer");
