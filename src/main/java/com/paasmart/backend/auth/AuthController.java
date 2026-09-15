@@ -78,4 +78,14 @@ public class AuthController {
         authService.resetPassword(req);
         return ResponseEntity.ok("Password reset successfully");
     }
+
+    @PostMapping("/admin/google")
+    public ResponseEntity<?> adminGoogleLogin(@Valid @RequestBody GoogleAuthRequest req) {
+        return ResponseEntity.ok(authService.adminGoogleLogin(req));
+    }
+
+    @PostMapping("/admin/email-login")
+    public ResponseEntity<?> adminEmailLogin(@Valid @RequestBody EmailLoginRequest req) {
+        return ResponseEntity.ok(authService.adminEmailLogin(req));
+    }
 }

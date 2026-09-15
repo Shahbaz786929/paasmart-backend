@@ -373,4 +373,90 @@ public class AuthService {
         String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
         return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
     }
+
+    // Admin app ke liye — Google se sign-in, LEKIN naya account KABHI nahi banta.
+    // Sirf wahi email login kar payegi jo already DB mein ADMIN/TENANT_ADMIN role
+    // ke sath maujood hai (super admin manually add karta hai).
+    public AuthResponse adminGoogleLogin(GoogleAuthRequest req) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", googleClientId);
+        form.add("client_secret", googleClientSecret);
+        form.add("code", req.getCode());
+        form.add("redirect_uri", req.getRedirectUri());
+        form.add("grant_type", "authorization_code");
+        if (req.getCodeVerifier() != null && !req.getCodeVerifier().isBlank()) {
+            form.add("code_verifier", req.getCodeVerifier());
+        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(form, headers);
+
+        Map tokenResponse;
+        try {
+            tokenResponse = restTemplate.postForObject(
+                    "https://oauth2.googleapis.com/token", requestEntity, Map.class);
+        } catch (Exception e) {
+            throw new BadRequestExceprion("Google sign-in failed. Please try again.");
+        }
+
+        if (tokenResponse == null || tokenResponse.get("id_token") == null) {
+            throw new BadRequestExceprion("Google sign-in failed. Please try again.");
+        }
+
+        String idToken = (String) tokenResponse.get("id_token");
+
+        Map<String, Object> googlePayload;
+        try {
+            googlePayload = restTemplate.getForObject(
+                    "https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken, Map.class);
+        } catch (Exception e) {
+            throw new BadRequestExceprion("Invalid Google token");
+        }
+
+        if (googlePayload == null || googlePayload.get("email") == null) {
+            throw new BadRequestExceprion("Invalid Google token");
+        }
+
+        String email = (String) googlePayload.get("email");
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadRequestExceprion(
+                        "This email is not registered as an admin. Contact the super admin to get access."));
+
+        if (user.getRole() != User.Role.ADMIN && user.getRole() != User.Role.TENANT_ADMIN) {
+            throw new BadRequestExceprion("This account is not authorized as an admin.");
+        }
+
+        if (user.getStatus() == User.Status.BANNED) {
+            throw new BadRequestExceprion("Your account has been blocked. Please contact support.");
+        }
+
+        String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
+        return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
+    }
+
+    public AuthResponse adminEmailLogin(EmailLoginRequest req) {
+        User user = userRepository.findByEmail(req.getEmail())
+                .orElseThrow(() -> new BadRequestExceprion("Invalid email or password"));
+
+        if (user.getRole() != User.Role.ADMIN && user.getRole() != User.Role.TENANT_ADMIN) {
+            throw new BadRequestExceprion("This account is not authorized as an admin.");
+        }
+
+        if (user.getPassword() == null) {
+            throw new BadRequestExceprion("This account was set up with Google. Please use \"Continue with Google\" to log in.");
+        }
+
+        if (!passwordEncoder.matches(req.getPassword(), user.getPassword())) {
+            throw new BadRequestExceprion("Invalid email or password");
+        }
+
+        if (user.getStatus() == User.Status.BANNED) {
+            throw new BadRequestExceprion("Your account has been blocked. Please contact support.");
+        }
+
+        String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
+        return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
+    }
 }
