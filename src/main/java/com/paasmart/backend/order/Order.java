@@ -27,6 +27,9 @@ public class Order {
 
     private BigDecimal totalAmount = BigDecimal.ZERO;
     private BigDecimal deliveryFee = BigDecimal.ZERO;
+    private BigDecimal subtotalAmount = BigDecimal.ZERO;   // items ka total
+    private BigDecimal discountAmount = BigDecimal.ZERO;   // coupon discount
+    private BigDecimal walletUsed = BigDecimal.ZERO;       // wallet se kata hua paisa
     private String deliveryAddress;
     private Double deliveryLat;
     private Double deliveryLng;
@@ -40,6 +43,34 @@ public class Order {
 
     public enum Status { PLACED, CONFIRMED, PREPARING, READY_FOR_PICKUP, PICKED_UP, IN_TRANSIT, DELIVERED, COMPLETED, CANCELLED }
     public enum PaymentMode { COD, ONLINE }
+
+    /**
+     * Customer ke alawa kisi ko OTP nahi dikhna chahiye (delivery boy, seller, admin).
+     * Ye ek alag (unmanaged) copy banata hai taaki DB me otp null save na ho jaye.
+     */
+    public Order withoutOtp() {
+        Order c = new Order();
+        c.id = this.id;
+        c.customerId = this.customerId;
+        c.shopId = this.shopId;
+        c.deliveryBoyId = this.deliveryBoyId;
+        c.tenantId = this.tenantId;
+        c.status = this.status;
+        c.paymentMode = this.paymentMode;
+        c.totalAmount = this.totalAmount;
+        c.deliveryFee = this.deliveryFee;
+        c.subtotalAmount = this.subtotalAmount;
+        c.discountAmount = this.discountAmount;
+        c.walletUsed = this.walletUsed;
+        c.deliveryAddress = this.deliveryAddress;
+        c.deliveryLat = this.deliveryLat;
+        c.deliveryLng = this.deliveryLng;
+        c.otp = null;
+        c.createdAt = this.createdAt;
+        c.deliveredAt = this.deliveredAt;
+        c.address = this.address;
+        return c;
+    }
 
     // Getters and setters
     public Long getId() { return id; }
@@ -57,6 +88,12 @@ public class Order {
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
     public BigDecimal getDeliveryFee() { return deliveryFee; }
+    public BigDecimal getSubtotalAmount() { return subtotalAmount; }
+    public void setSubtotalAmount(BigDecimal subtotalAmount) { this.subtotalAmount = subtotalAmount; }
+    public BigDecimal getDiscountAmount() { return discountAmount; }
+    public void setDiscountAmount(BigDecimal discountAmount) { this.discountAmount = discountAmount; }
+    public BigDecimal getWalletUsed() { return walletUsed; }
+    public void setWalletUsed(BigDecimal walletUsed) { this.walletUsed = walletUsed; }
     public void setDeliveryFee(BigDecimal deliveryFee) { this.deliveryFee = deliveryFee; }
     public String getDeliveryAddress() { return deliveryAddress; }
     public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }

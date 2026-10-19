@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,4 +19,6 @@ public interface ProductReviewRepository extends JpaRepository<ProductReview, Lo
 
     long countByProductId(Long productId);
     long countByProductIdAndRating(Long productId, Integer rating);
+
+    List<ProductReview> findByProductIdInOrderByCreatedAtDesc(Collection<Long> productIds);
 }

@@ -31,17 +31,20 @@ public class CustomerServiceImpl implements CustomerService{
         User customer = userRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
 
-        customer.setName(request.getFullName());
-        customer.setPhone(request.getMobile());
-        customer.setProfileImage(request.getProfileImage());
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            customer.setName(request.getFullName().trim());
+        }
+        if (request.getProfileImage() != null) {
+            customer.setProfileImage(request.getProfileImage());
+        }
 
         User saved = userRepository.save(customer);
 
         return new CustomerProfileResponse(
                 saved.getId(),
                 saved.getName(),
+                saved.getPhone(),   
                 saved.getEmail(),
-                saved.getPhone(),
                 saved.getProfileImage()
         );
     }

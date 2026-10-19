@@ -15,7 +15,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             JOIN products p ON p.id = oi.product_id
-            WHERE o.shop_id = :shopId AND o.status = 'COMPLETED'
+            WHERE o.shop_id = :shopId AND o.status IN ('DELIVERED', 'COMPLETED')
             GROUP BY oi.product_id, p.name
             ORDER BY total_qty DESC
             LIMIT 5

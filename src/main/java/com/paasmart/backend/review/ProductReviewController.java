@@ -3,6 +3,7 @@ package com.paasmart.backend.review;
 import com.paasmart.backend.review.dto.ProductReviewSummary;
 import com.paasmart.backend.review.dto.ReviewRequest;
 import com.paasmart.backend.review.dto.SellerReplyRequest;
+import com.paasmart.backend.review.dto.SellerReviewResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -45,6 +46,11 @@ public class ProductReviewController {
     @GetMapping("/api/reviews/my")
     public ResponseEntity<List<ProductReview>> myReviews() {
         return ResponseEntity.ok(reviewService.getMyReviews(currentUserId()));
+    }
+
+    @GetMapping("/api/v1/seller/reviews")
+    public ResponseEntity<List<SellerReviewResponse>> sellerReviews() {
+        return ResponseEntity.ok(reviewService.getReviewsForSeller(currentUserId()));
     }
 
     // Seller reply

@@ -1,5 +1,6 @@
 package com.paasmart.backend.tryon;
 
+import com.paasmart.backend.common.RestClients;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -15,7 +16,7 @@ import java.util.Map;
 @Component
 public class FashnAiProvider implements TryOnProvider {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = RestClients.withTimeouts(5000, 60000);
 
     @Value("${fashn.ai.api-key:}")
     private String apiKey;

@@ -35,6 +35,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     private Status status = Status.ACTIVE;
 
+    @Column(name = "token_valid_after")
+    private LocalDateTime tokenValidAfter;
+
     private String preferredLanguage = "hi";
     private String profileImage;
     private String otpCode;
@@ -190,4 +193,6 @@ public class User {
     public void setLocationUpdatedAt(LocalDateTime locationUpdatedAt) { this.locationUpdatedAt = locationUpdatedAt; }
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+    public LocalDateTime getTokenValidAfter() { return tokenValidAfter; }
+    public void setTokenValidAfter(LocalDateTime tokenValidAfter) { this.tokenValidAfter = tokenValidAfter; }
 }

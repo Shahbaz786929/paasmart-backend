@@ -16,18 +16,43 @@ public class RateLimitService {
     @Autowired
     private RateLimitRepository rateLimitRepository;
 
-    // Ek phone number 15 minute mein max 5 baar naya OTP maang sakta hai
+    // ---- Phone OTP (pehle se) ----
     public boolean tryConsumeOtpRequest(String phone) {
-        return tryConsume("otp-request:" + phone);
+        return tryConsume("otp-request:" + phone, MAX_ATTEMPTS);
     }
 
-    // Ek phone number 15 minute mein max 5 baar OTP verify try kar sakta hai
     public boolean tryConsumeOtpVerify(String phone) {
-        return tryConsume("otp-verify:" + phone);
+        return tryConsume("otp-verify:" + phone, MAX_ATTEMPTS);
+    }
+
+    // ---- Email OTP (naya) ----
+    // Email pe naya OTP bhejne ki limit (spam rokne ke liye)
+    public boolean tryConsumeEmailOtpRequest(String email) {
+        return tryConsume("email-otp-request:" + email, MAX_ATTEMPTS);
+    }
+
+    // Register ke time email OTP verify karne ki limit
+    public boolean tryConsumeEmailOtpVerify(String email) {
+        return tryConsume("email-otp-verify:" + email, MAX_ATTEMPTS);
+    }
+
+    // Forgot-password ka OTP verify karne ki limit
+    public boolean tryConsumePasswordReset(String email) {
+        return tryConsume("pwd-reset:" + email, MAX_ATTEMPTS);
+    }
+
+    // Password se login: thoda zyada chhoot (galti se typo hoti hai)
+    public boolean tryConsumeEmailLogin(String email) {
+        return tryConsume("email-login:" + email, 10);
+    }
+
+    // Delivery OTP: ek order pe 15 minute me 5 koshish
+    public boolean tryConsumeDeliveryOtp(Long orderId) {
+        return tryConsume("delivery-otp:" + orderId, MAX_ATTEMPTS);
     }
 
     @Transactional
-    protected boolean tryConsume(String rateKey) {
+    public boolean tryConsume(String rateKey, int maxAttempts) {
         RateLimitEntry entry = rateLimitRepository.findByRateKey(rateKey)
                 .orElseGet(() -> {
                     RateLimitEntry fresh = new RateLimitEntry();
@@ -40,19 +65,18 @@ public class RateLimitService {
         LocalDateTime now = LocalDateTime.now();
         long minutesSinceWindowStart = ChronoUnit.MINUTES.between(entry.getWindowStart(), now);
 
-        // 15 minute puri ho gayi -- window reset karo
         if (minutesSinceWindowStart >= WINDOW_MINUTES) {
             entry.setRequestCount(0);
             entry.setWindowStart(now);
         }
 
-        if (entry.getRequestCount() >= MAX_ATTEMPTS) {
-            rateLimitRepository.save(entry); // window-reset hua ho to wo bhi save ho jaaye
-            return false; // limit exceed
+        if (entry.getRequestCount() >= maxAttempts) {
+            rateLimitRepository.save(entry);
+            return false;
         }
 
         entry.setRequestCount(entry.getRequestCount() + 1);
         rateLimitRepository.save(entry);
-        return true; // allowed
+        return true;
     }
 }

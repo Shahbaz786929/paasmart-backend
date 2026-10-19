@@ -26,6 +26,6 @@ public class RatingController {
     // Public - anyone browsing a shop can see its ratings
     @GetMapping("/api/v1/shops/{id}/ratings")
     public ResponseEntity<?> shopRatings(@PathVariable Long id) {
-        return ResponseEntity.ok(ratingService.getShopRating(id));
+        return ResponseEntity.ok(ratingService.getShopRatings(id));
     }
 }

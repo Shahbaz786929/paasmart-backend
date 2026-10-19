@@ -7,6 +7,7 @@ import com.paasmart.backend.auth.UserRepository;
 import com.paasmart.backend.cart.Cart;
 import com.paasmart.backend.cart.CartRepository;
 import com.paasmart.backend.coupon.CouponService;
+import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.flashsale.FlashSaleService;
 import com.paasmart.backend.order.*;
@@ -73,19 +74,21 @@ public class CheckoutServiceImpl implements CheckoutService {
         this.settingsService = settingsService;
     }
 
-    // Ek helper class — locked product ka snapshot rakhta hai taaki order-items
-    // banate waqt product dobara fetch na karna pade (lock sirf isi transaction ke andar valid hai).
     private static class LockedItem {
         final Long productId;
         final Integer quantity;
         final BigDecimal unitPrice;
         final BigDecimal subtotal;
+        final String productName;
+        final String productImageUrl;
 
-        LockedItem(Long productId, Integer quantity, BigDecimal unitPrice, BigDecimal subtotal) {
+        LockedItem(Long productId, Integer quantity, BigDecimal unitPrice, BigDecimal subtotal, String productName, String productImageUrl) {
             this.productId = productId;
             this.quantity = quantity;
             this.unitPrice = unitPrice;
             this.subtotal = subtotal;
+            this.productName = productName;
+            this.productImageUrl = productImageUrl;
         }
     }
 
@@ -106,7 +109,7 @@ public class CheckoutServiceImpl implements CheckoutService {
 
         List<Cart> cartItems = cartRepository.findByCustomer(customer);
         if (cartItems.isEmpty()) {
-            throw new RuntimeException("Cart Is Empty");
+            throw new BadRequestExceprion("Your cart is empty");
         }
 
         Product firstProduct = productRepository.findById(cartItems.get(0).getProduct().getId())
@@ -115,6 +118,17 @@ public class CheckoutServiceImpl implements CheckoutService {
         // Delivery zone check
         com.paasmart.backend.seller.Shop shop = shopRepository.findById(firstProduct.getShopId())
                 .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
+
+        if (shop.getStatus() != com.paasmart.backend.seller.Shop.Status.APPROVED) {
+            throw new com.paasmart.backend.exception.BadRequestExceprion("This shop is currently not accepting orders.");
+        }
+        // Ek order me ek hi shop ka saaman
+        for (Cart c : cartItems) {
+            if (!java.util.Objects.equals(c.getProduct().getShopId(), shop.getId())) {
+                throw new com.paasmart.backend.exception.BadRequestExceprion(
+                        "Your cart has items from more than one shop. Please order from one shop at a time.");
+            }
+        }
 
         if (!shopService.canDeliverTo(shop, address.getLatitude(), address.getLongitude())) {
             throw new com.paasmart.backend.exception.BadRequestExceprion(
@@ -134,11 +148,12 @@ public class CheckoutServiceImpl implements CheckoutService {
                 ? GroUtils.distanceKm(shop.getLatitude(), shop.getLongitude(), address.getLatitude(), address.getLongitude())
                 : 1.0; // coordinates missing -> charge only the base fee
         order.setDeliveryFee(settingsService.calculateDeliveryFee(distanceKm));
-        order.setPaymentMode(
-                request.getPaymentMethod().equalsIgnoreCase("COD")
-                        ? Order.PaymentMode.COD
-                        : Order.PaymentMode.ONLINE
-        );
+        String method = request.getPaymentMethod() == null ? "" : request.getPaymentMethod().trim().toUpperCase();
+        if (!method.equals("COD")) {
+            throw new com.paasmart.backend.exception.BadRequestExceprion(
+                    "Online payment is not available yet. Please choose Cash on Delivery.");
+        }
+        order.setPaymentMode(Order.PaymentMode.COD);
         order.setStatus(Order.Status.PLACED);
 
         order.setOtp(String.valueOf(100000 + secureRandom.nextInt(900000)));
@@ -152,6 +167,10 @@ public class CheckoutServiceImpl implements CheckoutService {
             Product product = productRepository.findByIdForUpdate(cart.getProduct().getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product Not Found"));
 
+            if (!Boolean.TRUE.equals(product.getIsAvailable())) {
+                throw new com.paasmart.backend.exception.BadRequestExceprion(product.getName() + " is no longer available");
+            }
+
             if (product.getStockQty() < cart.getQuantity()) {
                 throw new com.paasmart.backend.exception.BadRequestExceprion(product.getName() + " is out of stock (only " + product.getStockQty() + " left)");
             }
@@ -160,16 +179,18 @@ public class CheckoutServiceImpl implements CheckoutService {
             BigDecimal subtotal = effectivePrice.multiply(BigDecimal.valueOf(cart.getQuantity()));
             grandTotal = grandTotal.add(subtotal);
 
-            // Stock yahi decrement kar dete hai — agar checkout ke aage kahi bhi fail hua
-            // (coupon invalid, etc.) to @Transactional ki wajah se ye decrement bhi rollback ho jayega.
             product.setStockQty(product.getStockQty() - cart.getQuantity());
             productRepository.save(product);
 
-            lockedItems.add(new LockedItem(product.getId(), cart.getQuantity(), effectivePrice, subtotal));
+            String firstImage = product.getImages() != null && !product.getImages().isBlank()
+                    ? product.getImages().split(",")[0].trim()
+                    : null;
+            lockedItems.add(new LockedItem(product.getId(), cart.getQuantity(), effectivePrice, subtotal, product.getName(), firstImage));
         }
 
         BigDecimal totalBeforeDiscount = grandTotal.add(order.getDeliveryFee());
         order.setTotalAmount(totalBeforeDiscount);
+        order.setSubtotalAmount(grandTotal);
 
         order = orderRepository.save(order);   // pehle save karo taaki orderId mile
 
@@ -186,6 +207,7 @@ public class CheckoutServiceImpl implements CheckoutService {
             BigDecimal discount = couponService.redeemCoupon(
                     customer.getId(), request.getCouponCode(), totalBeforeDiscount, order.getId());
             order.setTotalAmount(totalBeforeDiscount.subtract(discount));
+            order.setDiscountAmount(discount);
             order = orderRepository.save(order);
         }
 
@@ -197,12 +219,11 @@ public class CheckoutServiceImpl implements CheckoutService {
             if (amountToUse.compareTo(BigDecimal.ZERO) > 0) {
                 walletService.debit(customer.getId(), amountToUse, "Used for order #" + order.getId(), order.getId());
                 order.setTotalAmount(order.getTotalAmount().subtract(amountToUse));
+                order.setWalletUsed(amountToUse);
                 order = orderRepository.save(order);
             }
         }
 
-        // Order items banate hai — stock pehle hi lock ke saath decrement ho chuka hai upar,
-        // isliye yaha dobara product fetch/decrement karne ki zaroorat nahi.
         for (LockedItem locked : lockedItems) {
             OrderItem item = new OrderItem();
             item.setOrderId(order.getId());
@@ -210,6 +231,8 @@ public class CheckoutServiceImpl implements CheckoutService {
             item.setQuantity(locked.quantity);
             item.setUnitPrice(locked.unitPrice);
             item.setSubtotal(locked.subtotal);
+            item.setProductName(locked.productName);
+            item.setProductImageUrl(locked.productImageUrl);
             orderItemRepository.save(item);
         }
 

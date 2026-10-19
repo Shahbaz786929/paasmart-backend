@@ -7,11 +7,13 @@ import com.paasmart.backend.auth.User;
 import com.paasmart.backend.order.Order;
 import com.paasmart.backend.seller.Shop;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -47,10 +49,12 @@ public class AdminController {
 
     // ---- Users ----
     @GetMapping("/users")
-    public ResponseEntity<List<AdminUserResponse>> allUsers() {
-        List<AdminUserResponse> users = adminService.getAllUsers().stream()
-                .map(AdminUserResponse::new)
-                .collect(Collectors.toList());
+    public ResponseEntity<Page<AdminUserResponse>> allUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        // Size capped at 100 so a caller can't bypass pagination with a huge page size.
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        Page<AdminUserResponse> users = adminService.getAllUsers(pageable).map(AdminUserResponse::new);
         return ResponseEntity.ok(users);
     }
 
@@ -66,8 +70,11 @@ public class AdminController {
 
     // ---- Orders ----
     @GetMapping("/orders")
-    public ResponseEntity<List<Order>> allOrders() {
-        return ResponseEntity.ok(adminService.getAllOrders());
+    public ResponseEntity<Page<Order>> allOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        return ResponseEntity.ok(adminService.getAllOrders(pageable).map(Order::withoutOtp));
     }
 
     // ---- Dashboard ----

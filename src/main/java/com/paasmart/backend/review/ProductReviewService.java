@@ -16,7 +16,7 @@ import com.paasmart.backend.seller.ShopRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
+import com.paasmart.backend.review.dto.SellerReviewResponse;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +30,8 @@ public class ProductReviewService {
     @Autowired private OrderItemRepository orderItemRepository;
     @Autowired private ShopRepository shopRepository;
     @Autowired private CloudinaryService cloudinaryService;
+    @Autowired private com.paasmart.backend.product.ProductRepository productRepository;
+    @Autowired private com.paasmart.backend.auth.UserRepository userRepository;
 
     public ProductReview addReview(Long customerId, Long productId, Long orderId,
                                    ReviewRequest req, List<MultipartFile> photos) {
@@ -96,8 +98,46 @@ public class ProductReviewService {
         return reviewRepository.findByCustomerIdOrderByCreatedAtDesc(customerId);
     }
 
+    // Seller ke saare products ke reviews (latest 200), customer ka naam aur product ka naam ke saath
+    public List<SellerReviewResponse> getReviewsForSeller(Long sellerId) {
+        Shop shop = shopRepository.findBySellerId(sellerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Your shop is not registered"));
+
+        Map<Long, com.paasmart.backend.product.Product> products = productRepository.findByShopId(shop.getId())
+                .stream()
+                .collect(Collectors.toMap(com.paasmart.backend.product.Product::getId, p -> p));
+        if (products.isEmpty()) {
+            return List.of();
+        }
+
+        List<ProductReview> reviews = reviewRepository
+                .findByProductIdInOrderByCreatedAtDesc(products.keySet())
+                .stream().limit(200).collect(Collectors.toList());
+
+        Map<Long, String> customerNames = new HashMap<>();
+        userRepository.findAllById(
+                reviews.stream().map(ProductReview::getCustomerId).distinct().collect(Collectors.toList())
+        ).forEach(u -> customerNames.put(u.getId(), u.getName() == null ? "Customer" : u.getName()));
+
+        return reviews.stream()
+                .map(r -> new SellerReviewResponse(
+                        r,
+                        products.get(r.getProductId()).getName(),
+                        customerNames.getOrDefault(r.getCustomerId(), "Customer")))
+                .collect(Collectors.toList());
+    }
+
     // Seller kisi review ka reply de sakta hai
     public ProductReview replyToReview(Long sellerId, Long reviewId, SellerReplyRequest req) {
+
+        String replyText = req.getReply() == null ? "" : req.getReply().trim();
+        if (replyText.isEmpty()) {
+            throw new BadRequestExceprion("Reply cannot be empty");
+        }
+        if (replyText.length() > 500) {
+            throw new BadRequestExceprion("Reply is too long (max 500 characters)");
+        }
+
         ProductReview review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
 
@@ -111,7 +151,7 @@ public class ProductReviewService {
             throw new UnauthorizedException("This review is not for your shop's product");
         }
 
-        review.setSellerReply(req.getReply());
+        review.setSellerReply(replyText);
         review.setSellerRepliedAt(java.time.LocalDateTime.now());
         return reviewRepository.save(review);
     }

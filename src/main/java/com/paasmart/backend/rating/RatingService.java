@@ -1,5 +1,6 @@
 package com.paasmart.backend.rating;
 
+import com.paasmart.backend.auth.UserRepository;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
@@ -18,6 +19,7 @@ public class RatingService {
     @Autowired private RatingRepository ratingRepository;
     @Autowired private OrderRepository orderRepository;
     @Autowired private ShopRepository shopRepository;
+    @Autowired private UserRepository userRepository;
 
     public Rating rateOrder(Long customerId, Long orderId, RatingRequest req) {
         Order order = orderRepository.findById(orderId)
@@ -48,9 +50,40 @@ public class RatingService {
         return ratingRepository.save(rating);
     }
 
-    public List<Rating> getShopRating (Long shopId) {
+    public ShopRatingsResponse getShopRatings(Long shopId) {
         Shop shop = shopRepository.findById(shopId)
                 .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
-        return ratingRepository.findBySellerIdOrderByCreatedAtDesc(shop.getSellerId());
+        if (shop.getStatus() != Shop.Status.APPROVED) {
+            throw new ResourceNotFoundException("Shop not found");
+        }
+
+        List<Rating> all = ratingRepository.findBySellerIdOrderByCreatedAtDesc(shop.getSellerId());
+        double avg = all.stream().mapToInt(Rating::getProductRating).average().orElse(0.0);
+        avg = Math.round(avg * 10) / 10.0;
+
+        List<Rating> recent = all.stream().limit(50).collect(java.util.stream.Collectors.toList());
+
+        java.util.Map<Long, String> names = new java.util.HashMap<>();
+        userRepository.findAllById(
+                recent.stream().map(Rating::getCustomerId).distinct().collect(java.util.stream.Collectors.toList())
+        ).forEach(u -> names.put(u.getId(), maskName(u.getName())));
+
+        List<ShopRatingsResponse.Item> items = recent.stream()
+                .map(r -> new ShopRatingsResponse.Item(
+                        r.getId(),
+                        names.getOrDefault(r.getCustomerId(), "Customer"),
+                        r.getProductRating(),
+                        r.getDeliveryRating(),
+                        r.getComment(),
+                        r.getCreatedAt()))
+                .collect(java.util.stream.Collectors.toList());
+
+        return new ShopRatingsResponse(avg, all.size(), items);
+    }
+
+    private String maskName(String name) {
+        if (name == null || name.isBlank()) return "Customer";
+        String[] parts = name.trim().split("\\s+");
+        return parts.length > 1 ? parts[0] + " " + parts[1].charAt(0) + "." : parts[0];
     }
 }

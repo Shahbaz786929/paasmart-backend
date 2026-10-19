@@ -151,15 +151,28 @@ public class InvoiceService {
                 BigDecimal itemsTotal = items.stream()
                         .map(OrderItem::getSubtotal)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal discount = order.getDiscountAmount() == null ? BigDecimal.ZERO : order.getDiscountAmount();
+                BigDecimal walletPaid = order.getWalletUsed() == null ? BigDecimal.ZERO : order.getWalletUsed();
+                BigDecimal fee = order.getDeliveryFee() == null ? BigDecimal.ZERO : order.getDeliveryFee();
+                BigDecimal orderTotal = itemsTotal.add(fee).subtract(discount);
 
                 y = writeRightAlignedLine(content, margin, pageWidth, y, "Items Total:", "Rs. " + itemsTotal);
-                y = writeRightAlignedLine(content, margin, pageWidth, y, "Delivery Fee:", "Rs. " + order.getDeliveryFee());
+                if (discount.signum() > 0) {
+                    y = writeRightAlignedLine(content, margin, pageWidth, y, "Coupon Discount:", "- Rs. " + discount);
+                }
+                y = writeRightAlignedLine(content, margin, pageWidth, y, "Delivery Fee:", "Rs. " + fee);
                 y -= 5;
                 content.moveTo(margin + pageWidth - 200, y);
                 content.lineTo(margin + pageWidth, y);
                 content.stroke();
                 y -= 18;
-                y = writeRightAlignedLine(content, margin, pageWidth, y, "Grand Total:", "Rs. " + order.getTotalAmount());
+                y = writeRightAlignedLine(content, margin, pageWidth, y, "Order Total:", "Rs. " + orderTotal);
+                if (walletPaid.signum() > 0) {
+                    y = writeRightAlignedLine(content, margin, pageWidth, y, "Paid from Wallet:", "- Rs. " + walletPaid);
+                }
+                y = writeRightAlignedLine(content, margin, pageWidth, y,
+                        order.getPaymentMode() == Order.PaymentMode.COD ? "To Pay on Delivery:" : "Amount Payable:",
+                        "Rs. " + order.getTotalAmount());
 
                 y -= 15;
                 y = writeLine(content, margin, y, "Payment Mode: " + order.getPaymentMode(), FONT_REGULAR, 10);

@@ -1,6 +1,7 @@
 package com.paasmart.backend.seller.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 public class ShopRegisterRequest {
 
@@ -14,7 +15,9 @@ public class ShopRegisterRequest {
     private String address;
 
     private String city;
+    @NotNull(message = "Shop location (latitude) is required")
     private Double latitude;
+    @NotNull(message = "Shop location (longitude) is required")
     private Double longitude;
     private String documentsUrl;
     private String logoUrl;

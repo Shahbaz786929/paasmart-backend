@@ -1,5 +1,7 @@
 package com.paasmart.backend.order;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,18 +20,21 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // ---- Admin dashboard ke liye ----
     long countByCreatedAtAfter(LocalDateTime dateTime);
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status = 'COMPLETED'")
+    @Query("SELECT COALESCE(SUM(o.totalAmount + o.walletUsed - COALESCE(o.deliveryFee, 0)), 0) FROM Order o WHERE o.status IN ('DELIVERED', 'COMPLETED')")
     java.math.BigDecimal getTotalRevenue();
 
-    List<Order> findAllByOrderByCreatedAtDesc();
+    // Paginated versions — used by the admin "All Orders" screen so it doesn't
+    // have to pull every order in the database on every load.
+    Page<Order> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    Page<Order> findByTenantIdOrderByCreatedAtDesc(Long tenantId, Pageable pageable);
 
     // ---- Seller analytics ----
     List<Order> findByShopIdAndCreatedAtAfter(Long shopId, LocalDateTime dateTime);
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.shopId = :shopId AND o.status = 'COMPLETED'")
+    @Query("SELECT COALESCE(SUM(o.totalAmount + o.walletUsed - COALESCE(o.deliveryFee, 0)), 0) FROM Order o WHERE o.shopId = :shopId AND o.status IN ('DELIVERED', 'COMPLETED')")
     java.math.BigDecimal getShopTotalRevenue(@Param("shopId") Long shopId);
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.shopId = :shopId AND o.status = 'COMPLETED' AND o.createdAt >= :since")
+    @Query("SELECT COALESCE(SUM(o.totalAmount + o.walletUsed - COALESCE(o.deliveryFee, 0)), 0) FROM Order o WHERE o.shopId = :shopId AND o.status IN ('DELIVERED', 'COMPLETED') AND o.createdAt >= :since")
     java.math.BigDecimal getShopRevenueSince(@Param("shopId") Long shopId, @Param("since") LocalDateTime since);
 
     long countByShopIdAndCreatedAtAfter(Long shopId, LocalDateTime dateTime);
@@ -37,10 +42,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     long countByShopIdAndStatus(Long shopId, Order.Status status);
 
     // --- Tenant-scoped (future: TENANT_ADMIN apne city ka order-dashboard banayega isse) ---
-    List<Order> findByTenantIdOrderByCreatedAtDesc(Long tenantId);
     long countByTenantIdAndCreatedAtAfter(Long tenantId, LocalDateTime dateTime);
     long countByTenantId(Long tenantId);
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.status = 'COMPLETED' AND o.tenantId = :tenantId")
+    @Query("SELECT COALESCE(SUM(o.totalAmount + o.walletUsed - COALESCE(o.deliveryFee, 0)), 0) FROM Order o WHERE o.status IN ('DELIVERED', 'COMPLETED') AND o.tenantId = :tenantId")
     java.math.BigDecimal getTenantTotalRevenue(@Param("tenantId") Long tenantId);
+
+    boolean existsByAddress_Id(Long addressId);
 }

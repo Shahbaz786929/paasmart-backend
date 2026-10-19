@@ -31,9 +31,12 @@ public class OrderController {
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getOrder(@PathVariable Long id) {
-        Order order = orderService.getOrderById(id, currentUserId());
+        Long userId = currentUserId();
+        Order order = orderService.getOrderById(id, userId);
+        // Is endpoint pe customer aur seller dono aa sakte hain; OTP sirf customer ko
+        Order visible = userId.equals(order.getCustomerId()) ? order : order.withoutOtp();
         return ResponseEntity.ok(java.util.Map.of(
-                "order", order,
+                "order", visible,
                 "items", orderService.getOrderItems(id)
         ));
     }

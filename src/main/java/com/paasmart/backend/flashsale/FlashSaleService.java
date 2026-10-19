@@ -38,6 +38,17 @@ public class FlashSaleService {
         if (req.getEndsAt().isBefore(req.getStartsAt()) || req.getEndsAt().isEqual(req.getStartsAt())) {
             throw new BadRequestExceprion("End time must be after start time");
         }
+
+        if (shop.getStatus() != Shop.Status.APPROVED) {
+            throw new BadRequestExceprion("Your shop is not approved yet.");
+        }
+        if (!Boolean.TRUE.equals(product.getIsAvailable())) {
+            throw new BadRequestExceprion("This product is hidden. Show it first to run a flash sale.");
+        }
+        if (flashSaleRepository.existsOverlapping(product.getId(), req.getStartsAt(), req.getEndsAt())) {
+            throw new BadRequestExceprion("This product already has a flash sale during that time.");
+        }
+
         if (req.getEndsAt().isBefore(LocalDateTime.now())) {
             throw new BadRequestExceprion("End time cannot be in the past");
         }
@@ -78,9 +89,19 @@ public class FlashSaleService {
 
     // Ek product ka effective price (agar active flash sale hai to discounted, warna normal)
     public BigDecimal getEffectivePrice(Product product) {
+        BigDecimal base = product.getPrice();
+        int productDiscount = product.getDiscountPercent() == null ? 0 : product.getDiscountPercent();
+        // Whole rupee tak round (customer app bhi Math.round use karta hai, to dono jagah same price dikhega)
+        BigDecimal regular = productDiscount > 0
+                ? applyDiscount(base, productDiscount).setScale(0, RoundingMode.HALF_UP)
+                : base;
+
         return flashSaleRepository.findActiveForProduct(product.getId(), LocalDateTime.now())
-                .map(sale -> applyDiscount(product.getPrice(), sale.getDiscountPercent()))
-                .orElse(product.getPrice());
+                .stream()
+                .findFirst()
+                .map(sale -> applyDiscount(base, sale.getDiscountPercent()))
+                .map(flashPrice -> flashPrice.min(regular))
+                .orElse(regular);
     }
 
     private BigDecimal applyDiscount(BigDecimal price, Integer percent) {
@@ -97,7 +118,13 @@ public class FlashSaleService {
                 .map(sale -> {
                     Product product = productRepository.findById(sale.getProductId()).orElse(null);
                     if (product == null) return null;
-                    BigDecimal dealPrice = applyDiscount(product.getPrice(), sale.getDiscountPercent());
+                    if (!Boolean.TRUE.equals(product.getIsAvailable())
+                            || product.getStockQty() == null || product.getStockQty() <= 0) return null;
+
+                    Shop shop = shopRepository.findById(product.getShopId()).orElse(null);
+                    if (shop == null || shop.getStatus() != Shop.Status.APPROVED) return null;
+
+                    BigDecimal dealPrice = getEffectivePrice(product);
                     return new ActiveDealResponse(
                             sale.getId(), product.getId(), product.getName(), product.getImages(),
                             product.getPrice(), dealPrice, sale.getDiscountPercent(), sale.getEndsAt()

@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.security.Security;
@@ -57,6 +58,7 @@ public class WebPushService {
         subscriptionRepository.deleteByEndpoint(endpoint);
     }
 
+    @Async
     public void sendToUser(Long userId, String title, String body, Map<String, String> data) {
         if (pushService == null) return;
 

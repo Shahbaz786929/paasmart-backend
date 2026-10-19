@@ -2,6 +2,7 @@ package com.paasmart.backend.returns;
 
 import com.paasmart.backend.returns.dto.ResolveReturnDto;
 import com.paasmart.backend.returns.dto.ReturnRequestDto;
+import com.paasmart.backend.returns.dto.SellerReturnResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -51,5 +52,10 @@ public class ReturnRequestController {
             @PathVariable Long returnRequestId,
             @RequestBody ResolveReturnDto dto) {
         return ResponseEntity.ok(returnRequestService.resolveReturnRequest(currentUserId(), returnRequestId, dto));
+    }
+
+    @GetMapping("/api/v1/seller/returns")
+    public ResponseEntity<List<SellerReturnResponse>> sellerReturns() {
+        return ResponseEntity.ok(returnRequestService.getReturnsForSeller(currentUserId()));
     }
 }

@@ -1,6 +1,7 @@
 package com.paasmart.backend.seller;
 
 import com.paasmart.backend.common.CloudinaryService;
+import com.paasmart.backend.order.Order;
 import com.paasmart.backend.seller.dto.ShopRegisterRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,8 +48,10 @@ public class SellerController {
     }
 
     @GetMapping("/products")
-    public ResponseEntity<?> myProducts() {
-        return ResponseEntity.ok(productService.getMyProducts(currentUserId()));
+    public ResponseEntity<?> myProducts(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return com.paasmart.backend.common.PageUtil.slice(productService.getMyProducts(currentUserId()), page, size);
     }
 
     @PutMapping("/products/{id}")
@@ -62,14 +65,20 @@ public class SellerController {
         return ResponseEntity.ok("Product is deleted");
     }
 
+    @PutMapping("/products/{id}/availability")
+    public ResponseEntity<?> setProductAvailability(@PathVariable Long id, @RequestBody Map<String, Boolean> body) {
+        boolean available = Boolean.TRUE.equals(body.get("available"));
+        return ResponseEntity.ok(productService.setAvailability(currentUserId(), id, available));
+    }
+
     @GetMapping("/orders")
     public ResponseEntity<?> shopOrders() {
-        return ResponseEntity.ok(orderService.getShopOrders(currentUserId()));
+        return ResponseEntity.ok(orderService.getShopOrders(currentUserId()).stream().map(Order::getShopId).toList());
     }
 
     @PutMapping("/orders/{id}/status")
     public ResponseEntity<?> updateOrderStatus(@PathVariable Long id, @Valid @RequestBody com.paasmart.backend.order.dto.OrderStatusUpdateRequest req) {
-        return ResponseEntity.ok(orderService.updateStatus(currentUserId(), id, req.getStatus()));
+        return ResponseEntity.ok(orderService.updateStatus(currentUserId(), id, req.getStatus()).withoutOtp());
     }
 
     @GetMapping("/orders/{id}/customer")

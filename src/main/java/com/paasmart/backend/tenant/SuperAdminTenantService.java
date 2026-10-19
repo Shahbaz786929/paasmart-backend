@@ -8,6 +8,8 @@ import com.paasmart.backend.tenant.dto.CreateTenantAdminRequest;
 import com.paasmart.backend.tenant.dto.CreateTenantRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.security.SecureRandom;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.Random;
@@ -17,6 +19,7 @@ public class SuperAdminTenantService {
 
     @Autowired private TenantRepository tenantRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private PasswordEncoder passwordEncoder;
 
     public List<Tenant> getAllTenants() {
         return tenantRepository.findAll();
@@ -53,9 +56,16 @@ public class SuperAdminTenantService {
             throw new BadRequestExceprion("This phone number is already registered");
         }
 
+        String email = req.getEmail().trim().toLowerCase();
+        if (userRepository.existsByEmail(email)) {
+            throw new BadRequestExceprion("This email is already registered");
+        }
+
         User admin = new User();
         admin.setName(req.getName());
         admin.setPhone(req.getPhone());
+        admin.setEmail(email);
+        admin.setPassword(passwordEncoder.encode(req.getPassword()));
         admin.setRole(User.Role.TENANT_ADMIN);
         admin.setTenant(tenant);
         admin.setReferralCode(generateUniqueReferralCode());
@@ -63,10 +73,17 @@ public class SuperAdminTenantService {
         return userRepository.save(admin);
     }
 
+    private static final String CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final SecureRandom secureRandom = new SecureRandom();
+
     private String generateUniqueReferralCode() {
         String code;
         do {
-            code = "PM" + String.format("%04d", new Random().nextInt(10000));
+            StringBuilder sb = new StringBuilder("PM");
+            for (int i = 0; i < 6; i++) {
+                sb.append(CODE_CHARS.charAt(secureRandom.nextInt(CODE_CHARS.length())));
+            }
+            code = sb.toString();
         } while (userRepository.findByReferralCode(code).isPresent());
         return code;
     }

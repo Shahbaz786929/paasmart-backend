@@ -7,8 +7,10 @@ import com.paasmart.backend.auth.UserRepository;
 import com.paasmart.backend.cart.Cart;
 import com.paasmart.backend.cart.CartRepository;
 import com.paasmart.backend.exception.ResourceNotFoundException;
+import com.paasmart.backend.exception.TooManyRequestsException;
 import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
+import com.paasmart.backend.ratelimit.RateLimitService;
 import com.paasmart.backend.seller.GroUtils;
 import com.paasmart.backend.seller.Shop;
 import com.paasmart.backend.seller.ShopRepository;
@@ -33,6 +35,7 @@ public class CheckoutController {
     @Autowired private ShopRepository shopRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private SettingsService settingsService;
+    @Autowired private RateLimitService rateLimitService;
 
     private Long currentUserId() {
         return (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -40,6 +43,11 @@ public class CheckoutController {
 
     @PostMapping
     public ResponseEntity<CheckoutResponse> placeOrder(@RequestBody CheckoutRequest request) {
+        Long uid = (Long) org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication().getPrincipal();
+        if (!rateLimitService.tryConsume("checkout:" + uid, 20)) {
+            throw new TooManyRequestsException("Too many order attempts. Please wait a few minutes and try again.");
+        }
         return ResponseEntity.ok(checkoutService.placeOrder(currentUserId(), request));
     }
 

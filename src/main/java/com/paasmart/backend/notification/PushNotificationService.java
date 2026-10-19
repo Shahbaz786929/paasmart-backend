@@ -1,5 +1,7 @@
 package com.paasmart.backend.notification;
 
+import com.paasmart.backend.common.RestClients;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -12,8 +14,9 @@ import org.slf4j.LoggerFactory;
 public class PushNotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(PushNotificationService.class);
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = RestClients.withTimeouts(3000, 5000);
 
+    @Async
     public void send(String pushToken, String title, String body) {
         if (pushToken == null || pushToken.isBlank()) return;
 

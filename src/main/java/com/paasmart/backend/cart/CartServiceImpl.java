@@ -2,6 +2,7 @@ package com.paasmart.backend.cart;
 
 import com.paasmart.backend.auth.User;
 import com.paasmart.backend.auth.UserRepository;
+import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.exception.UnauthorizedException;
 import com.paasmart.backend.product.Product;
@@ -20,6 +21,7 @@ public class CartServiceImpl implements CartService {
     @Autowired private CartRepository cartRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private ProductRepository productRepository;
+    @Autowired private com.paasmart.backend.flashsale.FlashSaleService flashSaleService;
 
     private CartResponse toResponse(Cart cart) {
         CartResponse response = new CartResponse();
@@ -41,23 +43,44 @@ public class CartServiceImpl implements CartService {
         Product product = productRepository.findByIdAndTenantId(request.getProductId(), TenantContext.getTenantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Product Not Found"));
 
-        Cart cart = cartRepository.findByCustomer(customer).stream()
+        int qty = request.getQuantity() == null ? 0 : request.getQuantity();
+        if (qty < 1) {
+            throw new BadRequestExceprion("Quantity must be at least 1");
+        }
+        if (!Boolean.TRUE.equals(product.getIsAvailable())) {
+            throw new BadRequestExceprion("This product is currently unavailable");
+        }
+
+        List<Cart> existingItems = cartRepository.findByCustomer(customer);
+
+        // Ek order = ek shop. Dusri shop ka item cart me ho to add nahi hoga.
+        boolean hasOtherShop = existingItems.stream()
+                .anyMatch(c -> !java.util.Objects.equals(c.getProduct().getShopId(), product.getShopId()));
+        if (hasOtherShop) {
+            throw new BadRequestExceprion(
+                    "Your cart has items from another shop. Please clear your cart or place that order first.");
+        }
+
+        Cart cart = existingItems.stream()
                 .filter(c -> c.getProduct().getId().equals(product.getId()))
                 .findFirst()
                 .orElse(null);
+
+        int newQty = (cart == null ? 0 : cart.getQuantity()) + qty;
+        if (product.getStockQty() != null && newQty > product.getStockQty()) {
+            throw new BadRequestExceprion("Only " + product.getStockQty() + " item(s) available in stock");
+        }
 
         if (cart == null) {
             cart = new Cart();
             cart.setCustomer(customer);
             cart.setProduct(product);
-            cart.setQuantity(request.getQuantity());
-        } else {
-            cart.setQuantity(cart.getQuantity() + request.getQuantity());
         }
+        cart.setQuantity(newQty);
 
-        BigDecimal price = product.getPrice();
+        BigDecimal price = flashSaleService.getEffectivePrice(product);
         cart.setPrice(price);
-        cart.setTotalPrice(price.multiply(BigDecimal.valueOf(cart.getQuantity())));
+        cart.setTotalPrice(price.multiply(BigDecimal.valueOf(newQty)));
 
         return toResponse(cartRepository.save(cart));
     }
@@ -80,7 +103,13 @@ public class CartServiceImpl implements CartService {
         if (!cart.getCustomer().getId().equals(customerId)) {
             throw new UnauthorizedException("This is not your cart item");
         }
-
+        if (quantity == null || quantity < 1) {
+            throw new BadRequestExceprion("Quantity must be at least 1");
+        }
+        Integer stock = cart.getProduct().getStockQty();
+        if (stock != null && quantity > stock) {
+            throw new BadRequestExceprion("Only " + stock + " item(s) available in stock");
+        }
         cart.setQuantity(quantity);
         cart.setTotalPrice(cart.getPrice().multiply(BigDecimal.valueOf(quantity)));
         return toResponse(cartRepository.save(cart));

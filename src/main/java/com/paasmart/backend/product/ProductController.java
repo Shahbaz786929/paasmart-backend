@@ -11,8 +11,11 @@ public class ProductController {
     @Autowired private ProductService productService;
 
     @GetMapping
-    public ResponseEntity<?> getAll(@RequestParam(required = false) String category) {
-        return ResponseEntity.ok(productService.getAllAvailableProducts(category));
+    public ResponseEntity<?> getAll(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return com.paasmart.backend.common.PageUtil.slice(productService.getAllAvailableProducts(category), page, size);
     }
 
     @GetMapping("/{id}")

@@ -46,7 +46,9 @@ public class SellerDashboardService {
                 + orderRepository.countByShopIdAndStatus(shopId, Order.Status.CONFIRMED)
                 + orderRepository.countByShopIdAndStatus(shopId, Order.Status.PREPARING);
         dashboard.setPendingOrders(pending);
-        dashboard.setCompletedOrders(orderRepository.countByShopIdAndStatus(shopId, Order.Status.COMPLETED));
+        dashboard.setCompletedOrders(
+                orderRepository.countByShopIdAndStatus(shopId, Order.Status.DELIVERED)
+                        + orderRepository.countByShopIdAndStatus(shopId, Order.Status.COMPLETED));
 
         // Revenue
         dashboard.setTotalRevenue(orderRepository.getShopTotalRevenue(shopId));

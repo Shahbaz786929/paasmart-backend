@@ -17,6 +17,12 @@ public class OrderItem {
     private BigDecimal unitPrice;
     private BigDecimal subtotal;
 
+    // Snapshot of the product's name/image AT ORDER TIME — if the seller later
+    // edits or deletes the product, this order's item still shows what the
+    // customer actually bought, instead of the (possibly changed) current data.
+    private String productName;
+    private String productImageUrl;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getOrderId() { return orderId; }
@@ -29,4 +35,8 @@ public class OrderItem {
     public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
     public BigDecimal getSubtotal() { return subtotal; }
     public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
+    public String getProductName() { return productName; }
+    public void setProductName(String productName) { this.productName = productName; }
+    public String getProductImageUrl() { return productImageUrl; }
+    public void setProductImageUrl(String productImageUrl) { this.productImageUrl = productImageUrl; }
 }

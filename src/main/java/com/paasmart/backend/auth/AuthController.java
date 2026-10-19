@@ -88,4 +88,14 @@ public class AuthController {
     public ResponseEntity<?> adminEmailLogin(@Valid @RequestBody EmailLoginRequest req) {
         return ResponseEntity.ok(authService.adminEmailLogin(req));
     }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout() {
+        org.springframework.security.core.Authentication auth =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof Long userId) {
+            authService.logout(userId);
+        }
+        return ResponseEntity.noContent().build();
+    }
 }

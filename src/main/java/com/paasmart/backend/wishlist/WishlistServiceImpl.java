@@ -2,6 +2,7 @@ package com.paasmart.backend.wishlist;
 
 import com.paasmart.backend.auth.User;
 import com.paasmart.backend.auth.UserRepository;
+import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
 import com.paasmart.backend.product.Product;
 import com.paasmart.backend.product.ProductRepository;
@@ -29,7 +30,7 @@ public class WishlistServiceImpl implements WishlistService {
 
         wishlistRepository.findByCustomerAndProduct(customer, product)
                 .ifPresent(w -> {
-                    throw new RuntimeException("Product already exists in wishlist");
+                    throw new BadRequestExceprion("This product is already in your wishlist");
                 });
 
         Wishlist wishlist = new Wishlist();

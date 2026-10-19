@@ -1,5 +1,7 @@
 package com.paasmart.backend.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,17 +24,29 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
 
-    @Value("${app.cors.allowed-origins:*}")
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    // Defaults to common local-dev origins (Expo web / Metro) instead of "*" —
+    // if this is deployed without explicitly setting app.cors.allowed-origins,
+    // CORS now fails closed (blocks browsers) instead of failing open (allowing
+    // any website to make credentialed requests to the API).
+    @Value("${app.cors.allowed-origins:http://localhost:8081,http://localhost:19006,http://localhost:3000}")
     private String allowedOrigins;
 
     @Autowired private JwtAuthFilter jwtAuthFilter;
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        if (allowedOrigins.contains("*")) {
+            log.warn("app.cors.allowed-origins is set to a wildcard ('*') — this allows ANY website to make " +
+                    "credentialed requests to this API. Set this explicitly to your real frontend domain(s) in production.");
+        }
+
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of("X-Total-Count", "X-Page", "X-Size"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -45,6 +59,11 @@ public class SecurityConfig {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((req, res, e) -> {
+                    res.setStatus(401);
+                    res.setContentType("application/json");
+                    res.getWriter().write("{\"message\":\"Session expired. Please login again.\"}");
+                }))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

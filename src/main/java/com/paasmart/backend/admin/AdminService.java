@@ -18,6 +18,8 @@ import com.paasmart.backend.tenant.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -121,9 +123,11 @@ public class AdminService {
 
     // ---- User management ----
 
-    public List<User> getAllUsers() {
+    public Page<User> getAllUsers(Pageable pageable) {
         Long tenantId = TenantContext.getTenantId();
-        return tenantId == null ? userRepository.findAll() : userRepository.findByTenantId(tenantId);
+        return tenantId == null
+                ? userRepository.findAllByOrderByCreatedAtDesc(pageable)
+                : userRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable);
     }
 
     public User blockUser(Long userId) {
@@ -151,11 +155,11 @@ public class AdminService {
 
     // ---- Orders monitor ----
 
-    public List<Order> getAllOrders() {
+    public Page<Order> getAllOrders(Pageable pageable) {
         Long tenantId = TenantContext.getTenantId();
         return tenantId == null
-                ? orderRepository.findAllByOrderByCreatedAtDesc()
-                : orderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId);
+                ? orderRepository.findAllByOrderByCreatedAtDesc(pageable)
+                : orderRepository.findByTenantIdOrderByCreatedAtDesc(tenantId, pageable);
     }
 
     // ---- Dashboard ----

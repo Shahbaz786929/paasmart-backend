@@ -13,6 +13,7 @@ import com.paasmart.backend.order.OrderItemRepository;
 import com.paasmart.backend.order.OrderRepository;
 import com.paasmart.backend.returns.dto.ResolveReturnDto;
 import com.paasmart.backend.returns.dto.ReturnRequestDto;
+import com.paasmart.backend.returns.dto.SellerReturnResponse;
 import com.paasmart.backend.seller.Shop;
 import com.paasmart.backend.seller.ShopRepository;
 import com.paasmart.backend.wallet.WalletService;
@@ -21,6 +22,7 @@ import com.paasmart.backend.auth.User;
 import com.paasmart.backend.auth.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -40,8 +42,9 @@ public class ReturnRequestService {
     @Autowired private NotificationService notificationService;
 
     private static final int RETURN_WINDOW_DAYS = 7;
+    // REFUNDED bhi shamil hai: ek item ka refund ek hi baar mil sakta hai
     private static final List<ReturnRequest.Status> ACTIVE_STATUSES =
-            List.of(ReturnRequest.Status.PENDING, ReturnRequest.Status.APPROVED);
+            List.of(ReturnRequest.Status.PENDING, ReturnRequest.Status.APPROVED, ReturnRequest.Status.REFUNDED);
 
     public ReturnRequest createReturnRequest(Long customerId, ReturnRequestDto dto, List<MultipartFile> photos) {
         OrderItem orderItem = orderItemRepository.findById(dto.getOrderItemId())
@@ -61,7 +64,7 @@ public class ReturnRequestService {
             throw new BadRequestExceprion("The return window (" + RETURN_WINDOW_DAYS + " days) for this order has expired");
         }
         if (returnRequestRepository.existsByOrderItemIdAndStatusIn(orderItem.getId(), ACTIVE_STATUSES)) {
-            throw new BadRequestExceprion("A return request for this item is already in progress");
+            throw new BadRequestExceprion("A return request for this item is already in progress or has been refunded");
         }
 
         String imageUrls = null;
@@ -108,8 +111,9 @@ public class ReturnRequestService {
     }
 
     // Seller approve/reject karta hai
+    @Transactional // refund credit aur status update ek saath, ya kuch nahi
     public ReturnRequest resolveReturnRequest(Long sellerId, Long returnRequestId, ResolveReturnDto dto) {
-        ReturnRequest request = returnRequestRepository.findById(returnRequestId)
+        ReturnRequest request = returnRequestRepository.findByIdForUpdate(returnRequestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Return request not found"));
 
         Order order = orderRepository.findById(request.getOrderId())
@@ -128,9 +132,15 @@ public class ReturnRequestService {
             OrderItem item = orderItemRepository.findById(request.getOrderItemId())
                     .orElseThrow(() -> new ResourceNotFoundException("Order item not found"));
 
+            java.math.BigDecimal maxRefund = maxRefundFor(order, item);
             java.math.BigDecimal refundAmount = dto.getRefundAmount() != null
                     ? dto.getRefundAmount()
-                    : item.getSubtotal();
+                    : maxRefund;
+
+            // Refund 0 se zyada aur item ke paise se zyada nahi ho sakta
+            if (refundAmount.signum() <= 0 || refundAmount.compareTo(maxRefund) > 0) {
+                throw new BadRequestExceprion("Refund amount must be more than 0 and at most Rs. " + maxRefund);
+            }
 
             request.setStatus(ReturnRequest.Status.APPROVED);
             request.setRefundAmount(refundAmount);
@@ -152,13 +162,17 @@ public class ReturnRequestService {
             notifyCustomer(request.getCustomerId(), order.getId(), "Return Approved & Refunded",
                     "Your return has been approved. Rs. " + refundAmount + " has been credited to your wallet.");
         } else {
+            String reason = (dto.getRejectionReason() == null || dto.getRejectionReason().isBlank())
+                    ? "No reason given"
+                    : dto.getRejectionReason().trim();
+
             request.setStatus(ReturnRequest.Status.REJECTED);
-            request.setRejectionReason(dto.getRejectionReason());
+            request.setRejectionReason(reason);
             request.setResolvedAt(java.time.LocalDateTime.now());
             request = returnRequestRepository.save(request);
 
             notifyCustomer(request.getCustomerId(), order.getId(), "Return Rejected",
-                    "Your return request was rejected. Reason: " + dto.getRejectionReason());
+                    "Your return request was rejected. Reason: " + reason);
         }
 
         return request;
@@ -172,5 +186,51 @@ public class ReturnRequestService {
 
     private void notifyCustomer(Long customerId, Long orderId, String title, String body) {
         notificationService.notify(customerId, Notification.Type.RETURN_REQUEST, title, body, orderId);
+    }
+
+    // Seller ki shop ke saare return requests, product aur customer ke naam ke saath
+    public List<SellerReturnResponse> getReturnsForSeller(Long sellerId) {
+        Shop shop = shopRepository.findBySellerId(sellerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Your shop is not registered"));
+
+        List<ReturnRequest> requests = returnRequestRepository.findAllForShop(shop.getId());
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+
+        java.util.Map<Long, OrderItem> items = new java.util.HashMap<>();
+        java.util.Map<Long, Order> orders = new java.util.HashMap<>();
+        orderRepository.findAllById(
+                requests.stream().map(ReturnRequest::getOrderId).distinct().collect(Collectors.toList())
+        ).forEach(o -> orders.put(o.getId(), o));
+        orderItemRepository.findAllById(
+                requests.stream().map(ReturnRequest::getOrderItemId).distinct().collect(Collectors.toList())
+        ).forEach(i -> items.put(i.getId(), i));
+
+        java.util.Map<Long, String> names = new java.util.HashMap<>();
+        userRepository.findAllById(
+                requests.stream().map(ReturnRequest::getCustomerId).distinct().collect(Collectors.toList())
+        ).forEach(u -> names.put(u.getId(), u.getName() == null ? "Customer" : u.getName()));
+
+        return requests.stream()
+                .map(r -> {
+                    OrderItem it = items.get(r.getOrderItemId());
+                    Order o = orders.get(r.getOrderId());
+                    java.math.BigDecimal maxRefund = (it != null && o != null) ? maxRefundFor(o, it) : null;
+                    return new SellerReturnResponse(r, it, names.getOrDefault(r.getCustomerId(), "Customer"), maxRefund);
+                })
+                .collect(Collectors.toList());
+    }
+
+    // Item ka maximum refund: coupon discount ko item ke hisse me se ghata ke
+    private java.math.BigDecimal maxRefundFor(Order order, OrderItem item) {
+        java.math.BigDecimal max = item.getSubtotal();
+        java.math.BigDecimal subtotal = order.getSubtotalAmount();
+        java.math.BigDecimal discount = order.getDiscountAmount();
+        if (subtotal != null && subtotal.signum() > 0 && discount != null && discount.signum() > 0) {
+            java.math.BigDecimal ratio = discount.divide(subtotal, 6, java.math.RoundingMode.HALF_UP);
+            max = max.subtract(max.multiply(ratio)).setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        return max;
     }
 }

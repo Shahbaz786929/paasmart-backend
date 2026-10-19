@@ -16,6 +16,10 @@ public class ShopSummaryResponse {
     private Double distanceKm;
     private Double deliveryRadiusKm;
     private boolean canDeliver;
+    private double averageRating = 0.0;
+    private long totalReviews = 0;
+    private int estimatedDeliveryMinMinutes = 25;
+    private int estimatedDeliveryMaxMinutes = 40;
 
     public ShopSummaryResponse(Shop shop, Double distanceKm, boolean canDeliver) {
         this.id = shop.getId();
@@ -44,4 +48,18 @@ public class ShopSummaryResponse {
     public Double getDistanceKm() { return distanceKm; }
     public Double getDeliveryRadiusKm() { return deliveryRadiusKm; }
     public boolean isCanDeliver() { return canDeliver; }
+    public double getAverageRating() { return averageRating; }
+    public long getTotalReviews() { return totalReviews; }
+    public int getEstimatedDeliveryMinMinutes() { return estimatedDeliveryMinMinutes; }
+    public int getEstimatedDeliveryMaxMinutes() { return estimatedDeliveryMaxMinutes; }
+
+    public void setRatingStats(double averageRating, long totalReviews) {
+        this.averageRating = averageRating;
+        this.totalReviews = totalReviews;
+    }
+
+    public void setEstimatedDelivery(int minMinutes, int maxMinutes) {
+        this.estimatedDeliveryMinMinutes = minMinutes;
+        this.estimatedDeliveryMaxMinutes = maxMinutes;
+    }
 }

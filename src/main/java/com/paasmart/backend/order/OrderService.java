@@ -24,7 +24,8 @@ import com.paasmart.backend.wallet.WalletTransactionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.paasmart.backend.exception.TooManyRequestsException;
+import com.paasmart.backend.ratelimit.RateLimitService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,7 @@ public class OrderService {
     @Autowired private NotificationService notificationService;
     @Autowired private WalletTransactionRepository walletTransactionRepository;
     @Autowired private CouponUsageRepository couponUsageRepository;
+    @Autowired private RateLimitService rateLimitService;
     // @Autowired private TelephonyService telephonyService; // Masked calling — baad me chahiye ho to uncomment karo
 
     // forward-only status flow
@@ -121,7 +123,7 @@ public class OrderService {
                     shopForNotify.getSellerId(),
                     Notification.Type.NEW_ORDER,
                     "New Order!",
-                    "You have received a new order — ₹" + finalOrder.getTotalAmount(),
+                    "You have received a new order — ₹" + finalOrder.getTotalAmount().add(finalOrder.getWalletUsed()).subtract(finalOrder.getDeliveryFee()),
                     finalOrder.getId()
             );
         }
@@ -152,7 +154,7 @@ public class OrderService {
         return order;
     }
 
-    @Transactional // stock restore + wallet refund + coupon release sab ek saath, ya kuch nahi
+    @Transactional
     public void cancelOrder(Long orderId, Long customerId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
@@ -164,7 +166,17 @@ public class OrderService {
             throw new BadRequestExceprion("This order can no longer be canceled because it has already been packed");
         }
 
-        // 1) Stock wapas restore karo — jitna order ke items me decrement hua tha
+        releaseOrderResources(order);
+
+        order.setStatus(Order.Status.CANCELLED);
+        orderRepository.save(order);
+        logStatusHistory(orderId, Order.Status.CANCELLED, customerId, "Cancelled by customer");
+    }
+
+    /** Cancel hone par: stock wapas, wallet refund, coupon release. Customer aur seller dono cancel yahi use karenge. */
+    private void releaseOrderResources(Order order) {
+        Long orderId = order.getId();
+
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
         for (OrderItem item : items) {
             productRepository.findById(item.getProductId()).ifPresent(product -> {
@@ -173,25 +185,16 @@ public class OrderService {
             });
         }
 
-        // 2) Agar is order ke liye wallet se paisa kata tha, to wapas credit karo
         walletTransactionRepository.findByOrderIdAndType(orderId, WalletTransaction.Type.ORDER_PAYMENT)
-                .ifPresent(debitTxn -> {
-                    BigDecimal amountToRefund = debitTxn.getAmount().abs(); // debit txn negative amount me save hota hai
-                    walletService.credit(
-                            customerId,
-                            amountToRefund,
-                            WalletTransaction.Type.REFUND,
-                            "Refund for cancelled order #" + orderId,
-                            orderId
-                    );
-                });
+                .ifPresent(debitTxn -> walletService.credit(
+                        order.getCustomerId(),
+                        debitTxn.getAmount().abs(),
+                        WalletTransaction.Type.REFUND,
+                        "Refund for cancelled order #" + orderId,
+                        orderId
+                ));
 
-        // 3) Coupon usage release karo taaki customer usi coupon ko dobara use kar sake
         couponUsageRepository.findByOrderId(orderId).ifPresent(couponUsageRepository::delete);
-
-        order.setStatus(Order.Status.CANCELLED);
-        orderRepository.save(order);
-        logStatusHistory(orderId, Order.Status.CANCELLED, customerId, "Cancelled by customer");
     }
 
     // ---- Seller-side ----
@@ -202,6 +205,15 @@ public class OrderService {
         return orderRepository.findByShopIdOrderByCreatedAtDesc(shop.getId());
     }
 
+    // Seller sirf apne hisse ke steps kar sakta hai. PICKED_UP / IN_TRANSIT / DELIVERED delivery boy ke hain.
+    private static final Map<Order.Status, Order.Status> SELLER_NEXT = Map.of(
+            Order.Status.PLACED, Order.Status.CONFIRMED,
+            Order.Status.CONFIRMED, Order.Status.PREPARING,
+            Order.Status.PREPARING, Order.Status.READY_FOR_PICKUP,
+            Order.Status.DELIVERED, Order.Status.COMPLETED
+    );
+
+    @Transactional
     public Order updateStatus(Long sellerId, Long orderId, String newStatusStr) {
         Shop shop = shopRepository.findBySellerId(sellerId)
                 .orElseThrow(() -> new ResourceNotFoundException("You don't have any registered shops."));
@@ -215,39 +227,39 @@ public class OrderService {
 
         Order.Status newStatus;
         try {
-            newStatus = Order.Status.valueOf(newStatusStr.toUpperCase());
+            newStatus = Order.Status.valueOf(newStatusStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new BadRequestExceprion("This status is invalid.");
         }
 
+        Order.Status current = order.getStatus();
+
         if (newStatus == Order.Status.CANCELLED) {
+            // Pickup ke baad seller cancel nahi kar sakta
+            if (current != Order.Status.PLACED && current != Order.Status.CONFIRMED
+                    && current != Order.Status.PREPARING) {
+                throw new BadRequestExceprion("This order can no longer be cancelled (status: " + current.name() + ").");
+            }
+            releaseOrderResources(order);
             order.setStatus(Order.Status.CANCELLED);
             order = orderRepository.save(order);
             logStatusHistory(orderId, Order.Status.CANCELLED, sellerId, "Cancelled by seller");
+            notifyCustomer(order, "Order Cancelled",
+                    "Your order #" + order.getId() + " was cancelled by the shop. Any wallet amount has been refunded.");
             return order;
         }
 
-        int currentIndex = FLOW.indexOf(order.getStatus());
-        int newIndex = FLOW.indexOf(newStatus);
-
-        if (newIndex != currentIndex + 1) {
-            throw new BadRequestExceprion("The order status must be updated sequentially. You cannot skip any status");
+        if (SELLER_NEXT.get(current) != newStatus) {
+            throw new BadRequestExceprion("You can't change this order from " + current.name() + " to " + newStatus.name() + ".");
         }
 
         order.setStatus(newStatus);
-        if (newStatus == Order.Status.DELIVERED) {
-            order.setDeliveredAt(java.time.LocalDateTime.now());
-        }
         order = orderRepository.save(order);
         logStatusHistory(orderId, newStatus, sellerId, "Updated by seller");
         notifyCustomer(order, "Order Update", "Your order #" + order.getId() + " is now " + newStatus.name());
 
         if (newStatus == Order.Status.READY_FOR_PICKUP) {
             notifyAvailableDeliveryBoys(order);
-        }
-
-        if (newStatus == Order.Status.DELIVERED) {
-            handleReferralBonus(order.getCustomerId());
         }
 
         return order;
@@ -435,11 +447,15 @@ public class OrderService {
         notificationService.notify(order.getCustomerId(), Notification.Type.ORDER_UPDATE, title, body, order.getId());
     }
 
+    @Transactional(noRollbackFor = {BadRequestExceprion.class, TooManyRequestsException.class})
     public Order confirmDelivery(Long deliveryBoyId, Long orderId, String otp) {
         Order order = getOwnedDeliveryOrder(deliveryBoyId, orderId);
 
         if (order.getStatus() != Order.Status.IN_TRANSIT && order.getStatus() != Order.Status.PICKED_UP) {
             throw new BadRequestExceprion("Order is not out for delivery yet");
+        }
+        if (!rateLimitService.tryConsumeDeliveryOtp(orderId)) {
+            throw new TooManyRequestsException("Too many wrong OTP attempts. Please try again after 15 minutes.");
         }
         if (order.getOtp() == null || !order.getOtp().equals(otp)) {
             throw new BadRequestExceprion("Invalid OTP");
@@ -458,6 +474,7 @@ public class OrderService {
                 "Delivery earning for order #" + order.getId(),
                 order.getId()
         );
+        handleReferralBonus(order.getCustomerId());
         return order;
     }
 

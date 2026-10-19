@@ -1,6 +1,7 @@
 package com.paasmart.backend.auth;
 
 import com.paasmart.backend.auth.dto.*;
+import com.paasmart.backend.common.RestClients;
 import com.paasmart.backend.config.JwtUtil;
 import com.paasmart.backend.exception.BadRequestExceprion;
 import com.paasmart.backend.exception.ResourceNotFoundException;
@@ -20,7 +21,6 @@ import org.springframework.web.client.RestTemplate;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Random;
 
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -33,7 +33,8 @@ public class AuthService {
 
     private static final SecureRandom secureRandom = new SecureRandom();
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate = RestClients.withTimeouts(3000, 8000);
+    @Autowired private com.paasmart.backend.config.JwtAuthFilter jwtAuthFilter;
 
     @Value("${google.client-id}")
     private String googleClientId;
@@ -65,6 +66,31 @@ public class AuthService {
     @Autowired
     private PasswordResetRepository passwordResetRepository;
 
+    /** Public signup se sirf yeh roles allowed hain. ADMIN/TENANT_ADMIN kabhi nahi. */
+    private User.Role safeRole(String raw, User.Role fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        User.Role role;
+        try {
+            role = User.Role.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestExceprion("Invalid role");
+        }
+        if (role != User.Role.CUSTOMER && role != User.Role.SELLER && role != User.Role.DELIVERY) {
+            throw new BadRequestExceprion("This role cannot be selected during signup");
+        }
+        return role;
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase();
+    }
+
+    private String newEmailOtp() {
+        return String.format("%06d", secureRandom.nextInt(1_000_000));
+    }
+
     public String register(RegisterRequest req) {
         if (userRepository.existsByPhone(req.getPhone())) {
             throw new BadRequestExceprion("This Phone Number Already Register");
@@ -73,7 +99,7 @@ public class AuthService {
         User user = new User();
         user.setName(req.getName());
         user.setPhone(req.getPhone());
-        user.setRole(User.Role.valueOf(req.getRole().toUpperCase()));
+        user.setRole(safeRole(req.getRole(), User.Role.CUSTOMER));
         user.setReferralCode(generateUniqueReferralCode());
 
         String tenantSlug = (req.getTenantSlug() == null || req.getTenantSlug().isBlank())
@@ -93,13 +119,19 @@ public class AuthService {
         }
 
         userRepository.save(user);
-        return "Registration Successful! You can login with the help og OTP";
+        return "Registration Successful! You can login with the help of OTP";
     }
+
+    private static final String CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     private String generateUniqueReferralCode() {
         String code;
         do {
-            code = "PM" + String.format("%04d", new Random().nextInt(10000));
+            StringBuilder sb = new StringBuilder("PM");
+            for (int i = 0; i < 6; i++) {
+                sb.append(CODE_CHARS.charAt(secureRandom.nextInt(CODE_CHARS.length())));
+            }
+            code = sb.toString();
         } while (userRepository.findByReferralCode(code).isPresent());
         return code;
     }
@@ -119,7 +151,7 @@ public class AuthService {
 
         log.info("OTP for {} is: {}", req.getPhone(), otp);
 
-        return "OPT  is send on console";
+        return "OTP sent successfully";
     }
 
     public AuthResponse verifyOtp(OtpVerifyRequest req) {
@@ -225,7 +257,7 @@ public class AuthService {
             user.setName(name);
             user.setEmail(email);
             user.setPhone(req.getPhone());
-            user.setRole(User.Role.valueOf((req.getRole() == null ? "SELLER" : req.getRole()).toUpperCase()));
+            user.setRole(safeRole(req.getRole(), User.Role.SELLER));
             user.setTenant(tenant);
             user.setReferralCode(generateUniqueReferralCode());
             userRepository.save(user);
@@ -241,7 +273,12 @@ public class AuthService {
 
     @Transactional
     public String emailRegisterInit(EmailRegisterRequest req) {
-        if (userRepository.existsByEmail(req.getEmail())) {
+        String email = normalizeEmail(req.getEmail());
+
+        if (!rateLimitService.tryConsumeEmailOtpRequest(email)) {
+            throw new TooManyRequestsException("Too many OTP requests. Please try again after 15 minutes.");
+        }
+        if (userRepository.existsByEmail(email)) {
             throw new BadRequestExceprion("An account with this email already exists");
         }
         if (userRepository.existsByPhone(req.getPhone())) {
@@ -249,30 +286,36 @@ public class AuthService {
         }
 
         // Purani, unverified request(s) isi email ki hon to hata do
-        emailVerificationRepository.deleteByEmail(req.getEmail());
+        emailVerificationRepository.deleteByEmail(email);
 
-        String otp = String.valueOf((int) (Math.random() * 900000) + 100000);
+        String otp = newEmailOtp();
 
         EmailVerification verification = new EmailVerification();
-        verification.setEmail(req.getEmail());
+        verification.setEmail(email);
         verification.setOtpCode(otp);
         verification.setName(req.getName());
         verification.setPhone(req.getPhone());
         verification.setPasswordHash(passwordEncoder.encode(req.getPassword()));
-        verification.setRole(req.getRole() == null ? "SELLER" : req.getRole().toUpperCase());
+        verification.setRole(safeRole(req.getRole(), User.Role.SELLER).name());
         verification.setTenantSlug(req.getTenantSlug());
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(10));
         emailVerificationRepository.save(verification);
 
-        emailService.sendOtpEmail(req.getEmail(), otp);
+        emailService.sendOtpEmail(email, otp);
 
-        return "OTP sent to " + req.getEmail();
+        return "OTP sent to " + email;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = {BadRequestExceprion.class, TooManyRequestsException.class})
     public AuthResponse emailRegisterVerify(EmailVerifyOtpRequest req) {
+        String email = normalizeEmail(req.getEmail());
+
+        if (!rateLimitService.tryConsumeEmailOtpVerify(email)) {
+            throw new TooManyRequestsException("Too many failed attempts. Please try again after 15 minutes.");
+        }
+
         EmailVerification verification = emailVerificationRepository
-                .findTopByEmailOrderByCreatedAtDesc(req.getEmail())
+                .findTopByEmailOrderByCreatedAtDesc(email)
                 .orElseThrow(() -> new BadRequestExceprion("No pending verification found for this email"));
 
         if (verification.getExpiresAt().isBefore(LocalDateTime.now())) {
@@ -298,8 +341,7 @@ public class AuthService {
         user.setTenant(tenant);
         user.setReferralCode(generateUniqueReferralCode());
         userRepository.save(user);
-
-        emailVerificationRepository.deleteByEmail(req.getEmail());
+        emailVerificationRepository.deleteByEmail(email);
 
         String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
         return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
@@ -308,33 +350,44 @@ public class AuthService {
 
     @Transactional
     public String forgotPasswordInit(ForgotPasswordRequest req) {
-        User user = userRepository.findByEmail(req.getEmail()).orElse(null);
+        String email = normalizeEmail(req.getEmail());
 
-        // Security ke liye: chahe email exist na kare, same success message dete hain
-        // — isse attacker ko pata nahi chalega ki konse emails registered hain.
+        // Limit email ke hisaab se lagti hai (account hai ya nahi, isse farak nahi), to kuch leak nahi hota
+        if (!rateLimitService.tryConsumeEmailOtpRequest("reset:" + email)) {
+            throw new TooManyRequestsException("Too many requests. Please try again after 15 minutes.");
+        }
+
+        User user = userRepository.findByEmail(email).orElse(null);
+
         if (user == null || user.getPassword() == null) {
             return "If an account exists with this email, a reset code has been sent.";
         }
 
-        passwordResetRepository.deleteByEmail(req.getEmail());
+        passwordResetRepository.deleteByEmail(email);
 
-        String otp = String.valueOf((int) (Math.random() * 900000) + 100000);
+        String otp = newEmailOtp();
 
         PasswordReset reset = new PasswordReset();
-        reset.setEmail(req.getEmail());
+        reset.setEmail(email);
         reset.setOtpCode(otp);
         reset.setExpiresAt(LocalDateTime.now().plusMinutes(10));
         passwordResetRepository.save(reset);
 
-        emailService.sendOtpEmail(req.getEmail(), otp);
+        emailService.sendOtpEmail(email, otp);
 
         return "If an account exists with this email, a reset code has been sent.";
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = {BadRequestExceprion.class, TooManyRequestsException.class})
     public void resetPassword(ResetPasswordRequest req) {
+        String email = normalizeEmail(req.getEmail());
+
+        if (!rateLimitService.tryConsumePasswordReset(email)) {
+            throw new TooManyRequestsException("Too many failed attempts. Please try again after 15 minutes.");
+        }
+
         PasswordReset reset = passwordResetRepository
-                .findTopByEmailOrderByCreatedAtDesc(req.getEmail())
+                .findTopByEmailOrderByCreatedAtDesc(email)
                 .orElseThrow(() -> new BadRequestExceprion("No pending reset request found for this email"));
 
         if (reset.getExpiresAt().isBefore(LocalDateTime.now())) {
@@ -345,17 +398,25 @@ public class AuthService {
             throw new BadRequestExceprion("Invalid code");
         }
 
-        User user = userRepository.findByEmail(req.getEmail())
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadRequestExceprion("Account not found"));
 
         user.setPassword(passwordEncoder.encode(req.getNewPassword()));
+        user.setTokenValidAfter(LocalDateTime.now());
         userRepository.save(user);
+        jwtAuthFilter.evict(user.getId());
 
-        passwordResetRepository.deleteByEmail(req.getEmail());
+        passwordResetRepository.deleteByEmail(email);
     }
 
     public AuthResponse emailLogin(EmailLoginRequest req) {
-        User user = userRepository.findByEmail(req.getEmail())
+        String email = normalizeEmail(req.getEmail());
+
+        if (!rateLimitService.tryConsumeEmailLogin(email)) {
+            throw new TooManyRequestsException("Too many login attempts. Please try again after 15 minutes.");
+        }
+
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadRequestExceprion("Invalid email or password"));
 
         if (user.getPassword() == null) {
@@ -367,7 +428,7 @@ public class AuthService {
         }
 
         if (user.getStatus() == User.Status.BANNED) {
-            throw new BadRequestExceprion("Ypur account has been blocked. Please contact support.");
+            throw new BadRequestExceprion("Your account has been blocked. Please contact support.");
         }
 
         String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
@@ -437,7 +498,11 @@ public class AuthService {
     }
 
     public AuthResponse adminEmailLogin(EmailLoginRequest req) {
-        User user = userRepository.findByEmail(req.getEmail())
+        String email = normalizeEmail(req.getEmail());
+        if (!rateLimitService.tryConsumeEmailLogin("admin:" + email)) {
+            throw new TooManyRequestsException("Too many login attempts. Please try again after 15 minutes.");
+        }
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadRequestExceprion("Invalid email or password"));
 
         if (user.getRole() != User.Role.ADMIN && user.getRole() != User.Role.TENANT_ADMIN) {
@@ -458,5 +523,14 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user.getId(), user.getRole().name(), user.getTenant().getId());
         return new AuthResponse(token, user.getId(), user.getName(), user.getRole().name());
+    }
+
+    @Transactional
+    public void logout(Long userId) {
+        userRepository.findById(userId).ifPresent(u -> {
+            u.setTokenValidAfter(LocalDateTime.now());
+            userRepository.save(u);
+        });
+        jwtAuthFilter.evict(userId);
     }
 }

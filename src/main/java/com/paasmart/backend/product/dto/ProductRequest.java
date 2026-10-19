@@ -3,6 +3,8 @@ package com.paasmart.backend.product.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.math.BigDecimal;
 
 public class ProductRequest {
@@ -17,8 +19,14 @@ public class ProductRequest {
     @Positive(message = "Price 0 se zyada honi chahiye")
     private BigDecimal price;
 
+    @Min(value = 0, message = "Discount negative nahi ho sakta")
+    @Max(value = 90, message = "Discount 90% se zyada nahi ho sakta")
     private Integer discountPercent = 0;
+
+    @NotNull(message = "Stock zaroori hai")
+    @Min(value = 0, message = "Stock negative nahi ho sakta")
     private Integer stockQty = 0;
+
     private String images;
     private String description;
     private Boolean tryOnEnabled = false;

@@ -27,7 +27,8 @@ public class DeliveryController {
     // Nearby unassigned ready-to-pickup orders (sirf apne tenant ke, aur sirf jab on-duty ho)
     @GetMapping("/orders/available")
     public ResponseEntity<List<Order>> availableOrders() {
-        return ResponseEntity.ok(orderService.getAvailableOrdersForDelivery(currentUserId()));
+        return ResponseEntity.ok(orderService.getAvailableOrdersForDelivery(currentUserId())
+                .stream().map(Order::withoutOtp).toList());
     }
 
     // Delivery partner ka current online/offline status
@@ -47,7 +48,7 @@ public class DeliveryController {
     // Order accept
     @PostMapping("/orders/{id}/accept")
     public ResponseEntity<Order> acceptOrder(@PathVariable Long id) {
-        return ResponseEntity.ok(orderService.acceptOrderForDelivery(currentUserId(), id));
+        return ResponseEntity.ok(orderService.acceptOrderForDelivery(currentUserId(), id).withoutOtp());
     }
 
     // Single assigned order ka full detail (order + items) — order screen ke liye
@@ -55,7 +56,7 @@ public class DeliveryController {
     public ResponseEntity<Map<String, Object>> orderDetail(@PathVariable Long id) {
         Order order = orderService.getDeliveryOrderDetail(currentUserId(), id);
         return ResponseEntity.ok(Map.of(
-                "order", order,
+                "order", order.withoutOtp(),
                 "items", orderService.getOrderItems(id)
         ));
     }
@@ -75,18 +76,19 @@ public class DeliveryController {
     // (active + past) deliveries
     @GetMapping("/orders/my")
     public ResponseEntity<List<Order>> myDeliveries() {
-        return ResponseEntity.ok(orderService.getMyDeliveries(currentUserId()));
+        return ResponseEntity.ok(orderService.getMyDeliveries(currentUserId())
+                .stream().map(Order::withoutOtp).toList());
     }
 
     // product pickup confirm on shop
     @PutMapping("/orders/{id}/picked-up")
     public ResponseEntity<Order> markPickedUp(@PathVariable Long id) {
-        return ResponseEntity.ok(orderService.markPickedUp(currentUserId(), id));
+        return ResponseEntity.ok(orderService.markPickedUp(currentUserId(), id).withoutOtp());
     }
 
     @PutMapping("/orders/{id}/in-transit")
     public ResponseEntity<Order> markInTransit(@PathVariable Long id) {
-        return ResponseEntity.ok(orderService.markInTransit(currentUserId(), id));
+        return ResponseEntity.ok(orderService.markInTransit(currentUserId(), id).withoutOtp());
     }
 
     // confirm order with help of otp
@@ -94,7 +96,7 @@ public class DeliveryController {
     public ResponseEntity<Order> confirmDelivery(
             @PathVariable Long id,
             @RequestBody DeliveryOtpRequest request) {
-        return ResponseEntity.ok(orderService.confirmDelivery(currentUserId(), id, request.getOtp()));
+        return ResponseEntity.ok(orderService.confirmDelivery(currentUserId(), id, request.getOtp()).withoutOtp());
     }
 
     // Delivery boy app periodically apni current location bhejega (jab tak koi active delivery ho)

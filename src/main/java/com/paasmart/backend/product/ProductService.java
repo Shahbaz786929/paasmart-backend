@@ -52,7 +52,9 @@ public class ProductService {
     public List<Product> getMyProducts(Long sellerId) {
         Shop shop = shopRepository.findBySellerId(sellerId)
                 .orElseThrow(() -> new ResourceNotFoundException("your shop is not registered"));
-        return productRepository.findByShopId(shop.getId());
+        List<Product> list = new java.util.ArrayList<>(productRepository.findByShopId(shop.getId()));
+        list.sort(java.util.Comparator.comparing(Product::getId).reversed());
+        return list;
     }
 
     public Product updateProduct(Long sellerId, Long productId, ProductRequest req) {
@@ -64,7 +66,7 @@ public class ProductService {
             throw new UnauthorizedException("this product is not in your shop");
         }
 
-        int oldStock = product.getStockQty();
+        int oldStock = product.getStockQty() == null ? 0 : product.getStockQty();
 
         product.setName(req.getName());
         product.setCategory(req.getCategory());
@@ -76,9 +78,11 @@ public class ProductService {
         product.setDescription(req.getDescription());
         product.setTryOnEnabled(req.getTryOnEnabled());
 
+        if (req.getVoiceDescriptionUrl() != null) product.setVoiceDescriptionUrl(req.getVoiceDescriptionUrl());
+
         Product updated = productRepository.save(product);
 
-        if (oldStock == 0 && updated.getStockQty() > 0) {
+        if (oldStock == 0 && updated.getStockQty() != null && updated.getStockQty() > 0) {
             wishlistNotificationService.notifyBackInStock(updated);
         }
 
@@ -96,14 +100,27 @@ public class ProductService {
         productRepository.delete(product);
     }
 
+    // Product ko customers se chhupao / wapas dikhao (bina delete kiye)
+    public Product setAvailability(Long sellerId, Long productId, boolean available) {
+        Shop shop = getApprovedShop(sellerId);
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        if (!product.getShopId().equals(shop.getId())) {
+            throw new UnauthorizedException("This product is not in your shop");
+        }
+        product.setIsAvailable(available);
+        return productRepository.save(product);
+    }
+
     // ---- Customer-facing (public) methods ----
 
     public List<Product> getAllAvailableProducts(String category) {
         Long tenantId = TenantContext.getTenantId();
         if (category != null && !category.isBlank()) {
-            return productRepository.findByCategoryIgnoreCaseAndIsAvailableTrueAndTenantId(category, tenantId);
+            return productRepository.findVisibleByCategoryAndTenant(category, tenantId, Shop.Status.APPROVED);
         }
-        return productRepository.findByIsAvailableTrueAndTenantId(tenantId);
+        return productRepository.findVisibleByTenant(tenantId, Shop.Status.APPROVED);
     }
 
     public Product getProductById(Long id) {
